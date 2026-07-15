@@ -11,6 +11,8 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <title>沖繩之旅 · 旅行日誌</title>
+<link rel="stylesheet" href="leaflet.css">
+<script src="leaflet.js" defer></script>
 <style>
 :root{
   --bg:#f2f7f8; --card:#ffffff; --ink:#123033; --ink2:#5b7a7e; --line:#e2ecee;
@@ -133,6 +135,23 @@ nav.bottom button.sel{color:var(--brand)}
 .toast.show{opacity:1}
 .rowflex{display:flex; gap:10px}
 .rowflex>*{flex:1}
+/* 旅行軌跡時間軸 */
+.tl{position:relative; padding-left:20px; margin-bottom:12px}
+.tl:before{content:''; position:absolute; left:6px; top:8px; bottom:8px; width:2px; background:var(--line)}
+.tlcard{position:relative; background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:12px; margin-bottom:12px}
+.tlcard:before{content:''; position:absolute; left:-19px; top:16px; width:10px; height:10px; border-radius:50%; background:var(--brand2); border:2px solid var(--bg)}
+.tltime{font-size:12px; color:var(--ink2); display:flex; justify-content:space-between; gap:8px}
+.tltext{font-size:15px; margin-top:6px; white-space:pre-wrap; word-break:break-word; line-height:1.5}
+.placechip{display:inline-flex; align-items:center; gap:4px; margin-top:8px; font-size:13px; color:var(--brand); background:var(--bg); border:1px solid var(--line); border-radius:16px; padding:5px 11px; text-decoration:none; max-width:100%; overflow:hidden}
+.placechip span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.tlphotos{display:flex; gap:6px; overflow-x:auto; margin-top:10px; scrollbar-width:none}
+.tlphotos::-webkit-scrollbar{display:none}
+.tlphotos .tph{flex:0 0 auto; width:76px; height:76px; border-radius:8px; overflow:hidden; background:var(--bg); border:1px solid var(--line)}
+.tlphotos img{width:100%; height:100%; object-fit:cover; display:block}
+.tlacts{display:flex; gap:8px; margin-top:10px}
+#trailMap{height:230px; border-radius:10px; overflow:hidden; z-index:0}
+.numpin{background:var(--brand); color:#fff; border-radius:50%; width:24px; height:24px; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.sheet textarea{width:100%; min-height:84px; border:1px solid var(--line); border-radius:10px; padding:10px; font:inherit; font-size:15px; background:var(--bg); color:var(--ink); resize:vertical}
 </style>
 </head>
 <body>
@@ -146,12 +165,21 @@ nav.bottom button.sel{color:var(--brand)}
 <main>
   <!-- 今日 -->
   <section class="tab show" id="tab-day">
+    <div class="card" id="trailMapCard" style="display:none">
+      <h2>🗺️ 今日軌跡</h2>
+      <div id="trailMap"></div>
+      <p class="muted" id="trailHint" style="margin:8px 0 0"></p>
+    </div>
+    <div class="tl" id="timeline"></div>
+    <button class="btn" id="addMomentBtn" style="width:100%">＋ 新增一站</button>
+    <div style="height:14px"></div>
     <div class="card">
-      <h2>📓 今日日記 <span class="mini" id="journalMeta"></span></h2>
-      <textarea id="journal" placeholder="今天去了哪裡、吃了什麼、有什麼好玩的事…"></textarea>
+      <h2>📝 今日總結 <span class="mini" id="journalMeta"></span></h2>
+      <textarea id="journal" placeholder="睡前寫兩句今天的總結…（選填）"></textarea>
     </div>
     <div class="card">
-      <h2>📷 今日照片 <span class="mini" id="dayPhotoCount"></span></h2>
+      <h2>📷 更多照片 <span class="mini" id="dayPhotoCount"></span></h2>
+      <p class="muted" style="margin:0 0 10px">沒有放進軌跡卡片的照片（卡片裡按「📷 加照片」可直接加進該站）</p>
       <div class="photogrid" id="dayPhotos"></div>
     </div>
     <div class="card">
@@ -266,6 +294,25 @@ nav.bottom button.sel{color:var(--brand)}
   </div>
 </div>
 
+<!-- 軌跡卡片 sheet -->
+<div class="sheetwrap" id="momentSheet">
+  <div class="mask"></div>
+  <div class="sheet">
+    <h3 id="momentTitle">新增一站</h3>
+    <div class="field" style="max-width:140px"><label>時間</label><input id="mTime" type="time"></div>
+    <div class="field"><label>發生了什麼</label><textarea id="mText" placeholder="這一站的見聞、心情…"></textarea></div>
+    <div class="field"><label>地點名稱（選填）</label><input id="mPlaceName" placeholder="例如：美麗海水族館"></div>
+    <div class="field"><label>Google Maps 連結（選填）</label><input id="mPlaceUrl" placeholder="貼上 Google Maps 的分享連結"></div>
+    <button class="btn sec" id="mGPS" style="width:100%">📍 打卡目前位置（顯示在軌跡地圖上）</button>
+    <div class="muted" id="mGeoStatus" style="margin:8px 0 12px"></div>
+    <div class="rowflex">
+      <button class="btn sec" id="mCancel">取消</button>
+      <button class="btn warn" id="mDelete" style="display:none">刪除</button>
+      <button class="btn" id="mSave">儲存</button>
+    </div>
+  </div>
+</div>
+
 <!-- 照片檢視 -->
 <div class="viewer" id="viewer">
   <img id="viewerImg" alt="">
@@ -320,12 +367,13 @@ const idbDel=(s,k)=>new Promise((res,rej)=>{const r=tx(s,'readwrite').delete(k);
 const idbAll=s=>new Promise((res,rej)=>{const r=tx(s,'readonly').getAll();r.onsuccess=()=>res(r.result||[]);r.onerror=()=>rej(r.error);});
 
 /* ---------- 資料模型 ---------- */
-// day doc: {date, journal:{text,updatedAt,updatedBy}, expenses:{id:{...}}, photos:{id:{...}}, dirty, sha}
+// day doc: {date, journal:{text,updatedAt,updatedBy}, moments:{id:{...}}, expenses:{id:{...}}, photos:{id:{...}}, dirty, sha}
 const docs=new Map();
-function blankDoc(date){return {date,journal:{text:'',updatedAt:0,updatedBy:''},expenses:{},photos:{},dirty:false,sha:null};}
+function blankDoc(date){return {date,journal:{text:'',updatedAt:0,updatedBy:''},moments:{},expenses:{},photos:{},dirty:false,sha:null};}
 async function getDoc(date){
   if(docs.has(date))return docs.get(date);
   const d=(await idbGet('days',date))||blankDoc(date);
+  if(!d.moments)d.moments={}; // 舊資料相容
   docs.set(date,d); return d;
 }
 async function saveDoc(d,markDirty=true){
@@ -342,7 +390,7 @@ function mergeDocs(local,remote){
   const out=blankDoc(local.date);
   out.journal=(remote.journal&&remote.journal.updatedAt>(local.journal?.updatedAt||0))?remote.journal:(local.journal||out.journal);
   for(const src of [remote,local]){ // local 後蓋，之後再比 updatedAt
-    for(const key of ['expenses','photos']){
+    for(const key of ['expenses','photos','moments']){
       for(const id in (src[key]||{})){
         const cur=out[key][id], cand=src[key][id];
         if(!cur||cand.updatedAt>cur.updatedAt)out[key][id]=cand;
@@ -351,7 +399,7 @@ function mergeDocs(local,remote){
   }
   return out;
 }
-const docPayload=d=>JSON.stringify({date:d.date,journal:d.journal,expenses:d.expenses,photos:d.photos},null,1);
+const docPayload=d=>JSON.stringify({date:d.date,journal:d.journal,moments:d.moments||{},expenses:d.expenses,photos:d.photos},null,1);
 
 /* ---------- GitHub 同步 ---------- */
 const GH={
@@ -479,14 +527,14 @@ async function photoURL(id){
   if(!rec)return null;
   const u=URL.createObjectURL(rec.blob); urlCache.set(id,u); return u;
 }
-async function addPhotos(files,date){
+async function addPhotos(files,date,momentId){
   const doc=await getDoc(date);
   for(const f of files){
     try{
       const {blob,w,h}=await compressImage(f);
       const id=uid();
       await idbPut('blobs',{id,blob,uploaded:false});
-      doc.photos[id]={id,caption:'',ts:now(),updatedAt:now(),by:settings.name,w,h};
+      doc.photos[id]={id,caption:'',ts:now(),updatedAt:now(),by:settings.name,w,h,momentId:momentId||null};
     }catch(e){console.error(e);toast('有一張照片處理失敗');}
   }
   await saveDoc(doc); renderAll();
@@ -514,17 +562,27 @@ function renderHeader(){
 }
 async function renderDay(){
   const doc=await getDoc(currentDate);
+  // 旅行軌跡時間軸
+  const tl=$('#timeline'); tl.innerHTML='';
+  const moments=Object.values(doc.moments||{}).filter(m=>!m.deleted)
+    .sort((a,b)=>(a.time||'').localeCompare(b.time||'')||(a.ts-b.ts));
+  const phByMoment={};
+  Object.values(doc.photos).filter(p=>!p.deleted&&p.momentId).forEach(p=>{(phByMoment[p.momentId]??=[]).push(p);});
+  for(const m of moments)tl.appendChild(momentCard(m,doc,(phByMoment[m.id]||[]).sort((a,b)=>a.ts-b.ts)));
+  if(!moments.length)tl.innerHTML='<div class="empty">按下方「＋新增一站」開始記錄今天的軌跡 🐾</div>';
+  renderTrailMap(moments);
+  // 今日總結
   const j=$('#journal');
   if(document.activeElement!==j)j.value=doc.journal.text||'';
   $('#journalMeta').textContent=doc.journal.updatedAt?`${doc.journal.updatedBy||''} ${new Date(doc.journal.updatedAt).toLocaleString()}`:'';
-  // photos
+  // 未分站照片
   const grid=$('#dayPhotos'); grid.innerHTML='';
-  const phs=Object.values(doc.photos).filter(p=>!p.deleted).sort((a,b)=>a.ts-b.ts);
+  const phs=Object.values(doc.photos).filter(p=>!p.deleted&&!p.momentId).sort((a,b)=>a.ts-b.ts);
   $('#dayPhotoCount').textContent=phs.length?phs.length+' 張':'';
   for(const p of phs)grid.appendChild(photoCell(p,doc));
   const add=document.createElement('div');
   add.className='ph addph'; add.textContent='＋';
-  add.onclick=()=>{$('#photoInput')._date=currentDate;$('#photoInput').click();};
+  add.onclick=()=>{const i=$('#photoInput');i._date=currentDate;i._momentId=null;i.click();};
   grid.appendChild(add);
   // expenses
   const list=Object.values(doc.expenses).filter(e=>!e.deleted).sort((a,b)=>a.ts-b.ts);
@@ -533,6 +591,61 @@ async function renderDay(){
   list.forEach(e=>box.appendChild(expRow(e)));
   const tot=list.reduce((s,e)=>s+toTWD(e),0);
   $('#dayExpTotal').textContent=list.length?('合計 '+fmtTWD(tot)):'';
+}
+function momentCard(m,doc,phs){
+  const el=document.createElement('div'); el.className='tlcard';
+  const place=m.place&&(m.place.name||m.place.url)?m.place:null;
+  let placeHtml='';
+  if(place){
+    let url=place.url||'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(place.name);
+    if(!/^https?:\/\//i.test(url))url='https://'+url;
+    placeHtml=`<a class="placechip" href="${escapeHtml(url)}" target="_blank" rel="noopener">📍<span>${escapeHtml(place.name||'地圖位置')}</span></a>`;
+  }
+  el.innerHTML=`<div class="tltime"><span>🕐 ${escapeHtml(m.time||'—')}</span><span>${escapeHtml(m.by||'')}</span></div>
+    ${m.text?`<div class="tltext">${escapeHtml(m.text)}</div>`:''}
+    ${placeHtml}
+    <div class="tlphotos"></div>
+    <div class="tlacts">
+      <button class="btn small sec" data-act="photo">📷 加照片</button>
+      <button class="btn small sec" data-act="edit">✏️ 編輯</button>
+    </div>`;
+  const pwrap=el.querySelector('.tlphotos');
+  if(!phs.length)pwrap.remove();
+  else for(const p of phs){
+    const d=document.createElement('div'); d.className='tph';
+    const img=document.createElement('img'); img.loading='lazy'; img.alt=p.caption||'';
+    d.appendChild(img);
+    photoURL(p.id).then(u=>{if(u)img.src=u;});
+    d.onclick=()=>openViewer(p,doc);
+    pwrap.appendChild(d);
+  }
+  el.querySelector('[data-act="photo"]').onclick=()=>{const i=$('#photoInput');i._date=doc.date;i._momentId=m.id;i.click();};
+  el.querySelector('[data-act="edit"]').onclick=()=>openMomentSheet(m);
+  return el;
+}
+let trailMap=null, trailLayer=null;
+function renderTrailMap(moments){
+  const card=$('#trailMapCard');
+  const pts=moments.filter(m=>m.place&&m.place.lat!=null&&m.place.lng!=null);
+  if(!pts.length||typeof L==='undefined'){card.style.display='none';return;}
+  card.style.display='';
+  if(!trailMap){
+    trailMap=L.map('trailMap');
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(trailMap);
+  }
+  if(trailLayer)trailLayer.remove();
+  trailLayer=L.layerGroup().addTo(trailMap);
+  const latlngs=pts.map(m=>[m.place.lat,m.place.lng]);
+  pts.forEach((m,i)=>{
+    L.marker(latlngs[i],{icon:L.divIcon({className:'',html:`<div class="numpin">${i+1}</div>`,iconSize:[24,24],iconAnchor:[12,12]})})
+      .addTo(trailLayer)
+      .bindPopup(`${escapeHtml(m.time||'')} ${escapeHtml(m.place.name||m.text||'')}`);
+  });
+  if(latlngs.length>1)L.polyline(latlngs,{color:'#0e7490',weight:3,dashArray:'6 8'}).addTo(trailLayer);
+  trailMap.fitBounds(L.latLngBounds(latlngs).pad(0.3),{maxZoom:16});
+  setTimeout(()=>trailMap.invalidateSize(),60);
+  $('#trailHint').textContent=pts.length<moments.length
+    ?'只有含座標的站會出現在地圖上（用「📍打卡目前位置」或貼含座標的地圖連結）':'';
 }
 function photoCell(p,doc){
   const el=document.createElement('div'); el.className='ph';
@@ -612,7 +725,7 @@ async function renderOverview(){
     const p=Object.values(doc.photos).filter(x=>!x.deleted).length;
     const t=Object.values(doc.expenses).filter(x=>!x.deleted).reduce((s,e)=>s+toTWD(e),0);
     photos+=p; tot+=t;
-    if((doc.journal.text||'').trim())daysWithJournal++;
+    if((doc.journal.text||'').trim()||Object.values(doc.moments||{}).some(m=>!m.deleted))daysWithJournal++;
     per.push([d,t]);
   }
   $('#ovDays').textContent=settings.days;
@@ -623,7 +736,7 @@ async function renderOverview(){
   $('#ovPerDay').innerHTML=per.map(([d,t])=>
     `<div class="catline"><div class="row"><span>Day ${dayNo(d)} ${fmtDate(d)}</span><b>${t?fmtTWD(t):'—'}</b></div>
      <div class="bar"><i style="width:${Math.round(t/max*100)}%"></i></div></div>`).join('');
-  $('#ovJournal').innerHTML=`<div class="muted">已寫 ${daysWithJournal} / ${settings.days} 天</div>
+  $('#ovJournal').innerHTML=`<div class="muted">已記錄 ${daysWithJournal} / ${settings.days} 天</div>
     <div class="bar" style="margin-top:8px"><i style="width:${Math.round(daysWithJournal/settings.days*100)}%"></i></div>`;
 }
 function renderSettings(){
@@ -697,6 +810,53 @@ async function deleteExp(){
   renderAll();
 }
 
+/* ---------- 軌跡卡片 sheet ---------- */
+let editingMoment=null, mGeo=null;
+function openMomentSheet(m){
+  editingMoment=m||null;
+  mGeo=(m&&m.place&&m.place.lat!=null)?{lat:m.place.lat,lng:m.place.lng}:null;
+  $('#momentTitle').textContent=m?'編輯這一站':'新增一站';
+  $('#mTime').value=m?(m.time||''):new Date().toTimeString().slice(0,5);
+  $('#mText').value=m?(m.text||''):'';
+  $('#mPlaceName').value=(m&&m.place)?(m.place.name||''):'';
+  $('#mPlaceUrl').value=(m&&m.place)?(m.place.url||''):'';
+  $('#mGeoStatus').textContent=mGeo?`已記錄座標 ${(+mGeo.lat).toFixed(5)}, ${(+mGeo.lng).toFixed(5)}`:'';
+  $('#mDelete').style.display=m?'':'none';
+  $('#momentSheet').classList.add('show');
+  if(!m)setTimeout(()=>$('#mText').focus(),100);
+}
+async function saveMoment(){
+  const text=$('#mText').value.trim(), name=$('#mPlaceName').value.trim();
+  let url=$('#mPlaceUrl').value.trim();
+  if(!text&&!name&&!url){toast('寫點什麼，或加個地點吧');return;}
+  let lat=mGeo?mGeo.lat:null, lng=mGeo?mGeo.lng:null;
+  if(lat==null&&url){ // 嘗試從連結萃取座標
+    const mt=url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)||url.match(/[?&]q=(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/);
+    if(mt){lat=parseFloat(mt[1]);lng=parseFloat(mt[2]);}
+  }
+  if(url&&!/^https?:\/\//i.test(url))url='https://'+url;
+  const place=(name||url||lat!=null)?{name,url:url||(lat!=null?`https://www.google.com/maps?q=${lat},${lng}`:''),lat,lng}:null;
+  const doc=await getDoc(currentDate);
+  const id=editingMoment?editingMoment.id:uid();
+  doc.moments[id]={id,time:$('#mTime').value||'',text,place,
+    ts:editingMoment?editingMoment.ts:now(),updatedAt:now(),by:settings.name};
+  await saveDoc(doc);
+  $('#momentSheet').classList.remove('show');
+  renderAll();
+}
+async function deleteMoment(){
+  if(!editingMoment)return;
+  if(!confirm('確定刪除這一站？（照片會回到「更多照片」）'))return;
+  const doc=await getDoc(currentDate);
+  doc.moments[editingMoment.id]={...doc.moments[editingMoment.id],deleted:true,updatedAt:now()};
+  for(const p of Object.values(doc.photos)){ // 卡片照片回到未分站
+    if(p.momentId===editingMoment.id&&!p.deleted)doc.photos[p.id]={...p,momentId:null,updatedAt:now()};
+  }
+  await saveDoc(doc);
+  $('#momentSheet').classList.remove('show');
+  renderAll();
+}
+
 /* ---------- 照片檢視器 ---------- */
 let viewing=null;
 async function openViewer(p,doc){
@@ -711,7 +871,7 @@ async function exportJSON(){
   const days=await idbAll('days');
   const data={app:'okitrip',exportedAt:new Date().toISOString(),
     settings:{...settings,token:undefined},
-    days:days.map(d=>({date:d.date,journal:d.journal,expenses:d.expenses,photos:d.photos}))};
+    days:days.map(d=>({date:d.date,journal:d.journal,moments:d.moments||{},expenses:d.expenses,photos:d.photos}))};
   const blob=new Blob([JSON.stringify(data,null,1)],{type:'application/json'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob); a.download='okinawa-backup-'+dstr(new Date())+'.json';
@@ -745,9 +905,24 @@ function bind(){
     },700);
   });
   $('#photoInput').addEventListener('change',e=>{
-    if(e.target.files.length)addPhotos([...e.target.files],e.target._date||currentDate);
-    e.target.value='';
+    if(e.target.files.length)addPhotos([...e.target.files],e.target._date||currentDate,e.target._momentId||null);
+    e.target._momentId=null; e.target.value='';
   });
+  $('#addMomentBtn').onclick=()=>openMomentSheet(null);
+  $('#mSave').onclick=saveMoment;
+  $('#mCancel').onclick=()=>$('#momentSheet').classList.remove('show');
+  $('#mDelete').onclick=deleteMoment;
+  $('#momentSheet .mask').onclick=()=>$('#momentSheet').classList.remove('show');
+  $('#mGPS').onclick=()=>{
+    if(!navigator.geolocation){toast('這個裝置不支援定位');return;}
+    $('#mGeoStatus').textContent='📡 定位中…';
+    navigator.geolocation.getCurrentPosition(pos=>{
+      mGeo={lat:+pos.coords.latitude.toFixed(6),lng:+pos.coords.longitude.toFixed(6)};
+      if(!$('#mPlaceUrl').value.trim())$('#mPlaceUrl').value=`https://www.google.com/maps?q=${mGeo.lat},${mGeo.lng}`;
+      $('#mGeoStatus').textContent=`已記錄座標 ${mGeo.lat}, ${mGeo.lng}`;
+    },err=>{$('#mGeoStatus').textContent='定位失敗：'+err.message+'（請確認已允許定位權限）';},
+    {enableHighAccuracy:true,timeout:12000,maximumAge:30000});
+  };
   $('#addExpBtn').onclick=()=>openExpSheet(currentDate);
   $('#addExpBtn2').onclick=()=>openExpSheet(currentDate);
   $('#expSave').onclick=saveExp;
