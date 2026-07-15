@@ -211,6 +211,9 @@ nav.bottom button.sel{color:var(--brand)}
         <button class="btn sec" id="syncNow">立即同步</button>
       </div>
       <div class="statusline" id="syncStatus">尚未設定同步</div>
+      <hr style="border:none;border-top:1px solid var(--line);margin:14px 0">
+      <p class="muted">設定好之後，把「一鍵設定連結」傳給另一半（LINE 私訊），她<b>點開就能直接用</b>，不用安裝也不用輸入任何東西。連結內含 token，請只在私人訊息中傳送。</p>
+      <button class="btn" id="shareSetup" style="margin-top:4px">💌 產生給另一半的一鍵設定連結</button>
     </div>
     <div class="card">
       <h2>💾 備份</h2>
@@ -381,6 +384,7 @@ const GH={
   }
 };
 const b64encodeText=t=>{const b=new TextEncoder().encode(t);let s='';b.forEach(c=>s+=String.fromCharCode(c));return btoa(s);};
+const b64decodeText=b=>new TextDecoder().decode(Uint8Array.from(atob(b),c=>c.charCodeAt(0)));
 const blobToB64=blob=>new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result.split(',')[1]);fr.readAsDataURL(blob);});
 
 let syncTimer=null, syncing=false, syncQueued=false;
@@ -788,6 +792,17 @@ function bind(){
     }catch(e){setSyncUI('err','連線失敗：'+e.message+'（請確認 token 與 repo 名稱）');}
   };
   $('#syncNow').onclick=()=>syncAll(false);
+  $('#shareSetup').onclick=async()=>{
+    if(!settings.token){toast('請先在上方貼 token 並按「儲存並測試連線」');return;}
+    const cfg={token:settings.token,repo:settings.repo,rate:settings.rate,startDate:settings.startDate,days:settings.days};
+    const link=location.origin+location.pathname+'#setup='+b64encodeText(JSON.stringify(cfg));
+    if(navigator.share){
+      try{await navigator.share({title:'沖繩之旅 旅行日誌',text:'點開這個連結就能一起記錄我們的沖繩旅程 🌺',url:link});return;}
+      catch(e){if(e.name==='AbortError')return;}
+    }
+    try{await navigator.clipboard.writeText(link);toast('連結已複製，用 LINE 傳給她吧！');}
+    catch(e){prompt('複製這個連結傳給她：',link);}
+  };
   $('#exportBtn').onclick=exportJSON;
   $('#importBtn').onclick=()=>$('#importFile').click();
   $('#importFile').addEventListener('change',e=>{if(e.target.files[0])importJSON(e.target.files[0]);e.target.value='';});
@@ -796,7 +811,27 @@ function bind(){
 }
 
 /* ---------- 啟動 ---------- */
+function applySetupLink(){
+  if(!location.hash.startsWith('#setup='))return;
+  try{
+    const cfg=JSON.parse(b64decodeText(location.hash.slice(7)));
+    if(!cfg.token)return;
+    settings.token=cfg.token;
+    if(cfg.repo)settings.repo=cfg.repo;
+    if(cfg.rate)settings.rate=cfg.rate;
+    if(cfg.startDate)settings.startDate=cfg.startDate;
+    if(cfg.days)settings.days=cfg.days;
+    saveSettings();
+    history.replaceState(null,'',location.pathname+location.search);
+    if(!settings.name){
+      const n=prompt('歡迎！請輸入你的名字（記帳會顯示付款人）');
+      if(n&&n.trim()){settings.name=n.trim();saveSettings();}
+    }
+    setTimeout(()=>toast('✅ 設定完成！可以開始記錄了'),400);
+  }catch(e){console.error('setup link error',e);}
+}
 (async function(){
+  applySetupLink();
   await openDB();
   initCurrentDate();
   bind();
