@@ -1,0 +1,14 @@
+{
+  "name": "沖繩之旅 · 旅行日誌",
+  "short_name": "沖繩之旅",
+  "description": "20 天沖繩家庭旅行：日記、照片、花費記錄",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0e7490",
+  "theme_color": "#0e7490",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0e7490">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="沖繩之旅">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<title>沖繩之旅 · 旅行日誌</title>
+<style>
+:root{
+  --bg:#f2f7f8; --card:#ffffff; --ink:#123033; --ink2:#5b7a7e; --line:#e2ecee;
+  --brand:#0e7490; --brand2:#06b6d4; --accent:#f59e0b; --danger:#dc2626; --ok:#059669;
+  --radius:14px; --nav-h:calc(58px + env(safe-area-inset-bottom,0px));
+}
+@media (prefers-color-scheme:dark){
+  :root{ --bg:#0c1a1d; --card:#12262a; --ink:#e6f2f3; --ink2:#8fb0b4; --line:#1e3a3f; }
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC","Segoe UI",sans-serif;
+  background:var(--bg); color:var(--ink); min-height:100dvh; padding-bottom:var(--nav-h);
+}
+header.app{
+  position:sticky; top:0; z-index:20;
+  background:linear-gradient(135deg,var(--brand),var(--brand2));
+  color:#fff; padding:calc(10px + env(safe-area-inset-top,0px)) 16px 0 16px;
+}
+header.app h1{margin:0; font-size:19px; display:flex; align-items:center; gap:8px}
+header.app .sub{font-size:12px; opacity:.85; margin:2px 0 8px}
+#syncDot{width:8px;height:8px;border-radius:50%;background:#94a3b8;display:inline-block}
+#syncDot.ok{background:#4ade80} #syncDot.busy{background:#facc15;animation:blink 1s infinite} #syncDot.err{background:#f87171}
+@keyframes blink{50%{opacity:.3}}
+.daychips{display:flex; gap:8px; overflow-x:auto; padding:4px 0 12px; scrollbar-width:none}
+.daychips::-webkit-scrollbar{display:none}
+.chip{
+  flex:0 0 auto; text-align:center; border-radius:12px; padding:6px 10px; min-width:56px;
+  background:rgba(255,255,255,.16); color:#fff; border:1px solid transparent; cursor:pointer;
+}
+.chip .d1{font-size:11px; opacity:.85}
+.chip .d2{font-size:14px; font-weight:700}
+.chip.sel{background:#fff; color:var(--brand)}
+main{padding:14px; max-width:640px; margin:0 auto}
+section.tab{display:none} section.tab.show{display:block}
+.card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:14px; margin-bottom:14px}
+.card h2{margin:0 0 10px; font-size:15px; display:flex; align-items:center; justify-content:space-between; gap:8px}
+.card h2 .mini{font-size:12px; color:var(--ink2); font-weight:400}
+textarea#journal{
+  width:100%; min-height:130px; border:1px solid var(--line); border-radius:10px; padding:10px;
+  font:inherit; font-size:15px; background:var(--bg); color:var(--ink); resize:vertical;
+}
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  border:none; border-radius:10px; padding:10px 14px; font:inherit; font-size:14px; font-weight:600;
+  background:var(--brand); color:#fff; cursor:pointer;
+}
+.btn.sec{background:var(--bg); color:var(--brand); border:1px solid var(--line)}
+.btn.warn{background:var(--danger)}
+.btn.small{padding:6px 10px; font-size:13px; border-radius:8px}
+.btn:disabled{opacity:.5}
+.photogrid{display:grid; grid-template-columns:repeat(3,1fr); gap:6px}
+.photogrid .ph{position:relative; aspect-ratio:1; border-radius:10px; overflow:hidden; background:var(--bg); border:1px solid var(--line)}
+.photogrid img{width:100%; height:100%; object-fit:cover; display:block}
+.photogrid .pending{position:absolute; top:4px; right:4px; font-size:10px; background:rgba(0,0,0,.55); color:#fff; padding:2px 5px; border-radius:6px}
+.addph{display:flex; align-items:center; justify-content:center; font-size:26px; color:var(--ink2); cursor:pointer; border-style:dashed !important}
+.exp-row{display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--line)}
+.exp-row:last-child{border-bottom:none}
+.exp-cat{width:38px; height:38px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:19px; background:var(--bg); flex:0 0 auto}
+.exp-main{flex:1; min-width:0}
+.exp-main .t1{font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.exp-main .t2{font-size:12px; color:var(--ink2)}
+.exp-amt{text-align:right; font-weight:700; font-size:15px}
+.exp-amt .twd{display:block; font-size:11px; color:var(--ink2); font-weight:400}
+.daylabel{font-size:13px; color:var(--ink2); margin:16px 4px 6px; font-weight:600}
+.totals{display:flex; gap:10px; margin-bottom:14px}
+.totbox{flex:1; background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:12px}
+.totbox .n{font-size:20px; font-weight:800; color:var(--brand)}
+.totbox .l{font-size:12px; color:var(--ink2)}
+.bar{height:8px; border-radius:5px; background:var(--bg); overflow:hidden; margin-top:4px}
+.bar i{display:block; height:100%; background:linear-gradient(90deg,var(--brand),var(--brand2))}
+.catline{margin-bottom:10px; font-size:13px}
+.catline .row{display:flex; justify-content:space-between}
+nav.bottom{
+  position:fixed; bottom:0; left:0; right:0; z-index:30;
+  background:var(--card); border-top:1px solid var(--line);
+  display:flex; padding-bottom:env(safe-area-inset-bottom,0px);
+}
+nav.bottom button{
+  flex:1; border:none; background:none; font:inherit; padding:8px 0 6px; color:var(--ink2); cursor:pointer;
+}
+nav.bottom button .ic{font-size:20px; display:block}
+nav.bottom button .lb{font-size:10px}
+nav.bottom button.sel{color:var(--brand)}
+.field{margin-bottom:12px}
+.field label{display:block; font-size:12px; color:var(--ink2); margin-bottom:4px}
+.field input,.field select{
+  width:100%; border:1px solid var(--line); border-radius:10px; padding:10px; font:inherit; font-size:15px;
+  background:var(--bg); color:var(--ink);
+}
+.catchips{display:flex; flex-wrap:wrap; gap:8px}
+.catchips .c{
+  border:1px solid var(--line); background:var(--bg); color:var(--ink); border-radius:20px;
+  padding:7px 12px; font-size:14px; cursor:pointer;
+}
+.catchips .c.sel{background:var(--brand); border-color:var(--brand); color:#fff}
+.sheetwrap{position:fixed; inset:0; z-index:50; display:none}
+.sheetwrap.show{display:block}
+.sheetwrap .mask{position:absolute; inset:0; background:rgba(0,0,0,.45)}
+.sheet{
+  position:absolute; left:0; right:0; bottom:0; background:var(--card);
+  border-radius:18px 18px 0 0; padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px));
+  max-height:88dvh; overflow-y:auto;
+}
+.sheet h3{margin:0 0 14px; font-size:16px}
+.viewer{position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.93); display:none; flex-direction:column}
+.viewer.show{display:flex}
+.viewer img{flex:1; object-fit:contain; min-height:0; width:100%}
+.viewer .vbar{display:flex; gap:10px; padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px)); align-items:center}
+.viewer .vcap{color:#fff; flex:1; font-size:14px}
+.muted{color:var(--ink2); font-size:12px; line-height:1.6}
+.statusline{font-size:12px; color:var(--ink2); margin-top:8px; word-break:break-all}
+.empty{color:var(--ink2); font-size:13px; text-align:center; padding:14px 0}
+.toast{
+  position:fixed; left:50%; transform:translateX(-50%); bottom:calc(var(--nav-h) + 14px);
+  background:var(--ink); color:var(--bg); padding:9px 16px; border-radius:20px; font-size:13px;
+  z-index:70; opacity:0; transition:opacity .25s; pointer-events:none; max-width:86vw;
+}
+.toast.show{opacity:1}
+.rowflex{display:flex; gap:10px}
+.rowflex>*{flex:1}
+</style>
+</head>
+<body>
+
+<header class="app">
+  <h1>🌺 沖繩之旅 <span id="syncDot" title="同步狀態"></span></h1>
+  <div class="sub" id="tripSub"></div>
+  <div class="daychips" id="dayChips"></div>
+</header>
+
+<main>
+  <!-- 今日 -->
+  <section class="tab show" id="tab-day">
+    <div class="card">
+      <h2>📓 今日日記 <span class="mini" id="journalMeta"></span></h2>
+      <textarea id="journal" placeholder="今天去了哪裡、吃了什麼、有什麼好玩的事…"></textarea>
+    </div>
+    <div class="card">
+      <h2>📷 今日照片 <span class="mini" id="dayPhotoCount"></span></h2>
+      <div class="photogrid" id="dayPhotos"></div>
+    </div>
+    <div class="card">
+      <h2>💴 今日花費 <span class="mini" id="dayExpTotal"></span></h2>
+      <div id="dayExpenses"></div>
+      <div style="margin-top:10px"><button class="btn" id="addExpBtn">＋ 記一筆</button></div>
+    </div>
+  </section>
+
+  <!-- 花費 -->
+  <section class="tab" id="tab-exp">
+    <div class="totals">
+      <div class="totbox"><div class="n" id="totJPY">¥0</div><div class="l">日圓消費合計</div></div>
+      <div class="totbox"><div class="n" id="totTWD">NT$0</div><div class="l">全部換算台幣</div></div>
+    </div>
+    <div class="card"><h2>📊 分類統計</h2><div id="catStats"></div></div>
+    <div id="expByDay"></div>
+    <div style="height:70px"></div>
+    <button class="btn" id="addExpBtn2" style="position:fixed; right:16px; bottom:calc(var(--nav-h) + 14px); border-radius:26px; padding:13px 18px; box-shadow:0 4px 14px rgba(0,0,0,.25)">＋ 記一筆</button>
+  </section>
+
+  <!-- 相簿 -->
+  <section class="tab" id="tab-album">
+    <div id="albumByDay"></div>
+  </section>
+
+  <!-- 總覽 -->
+  <section class="tab" id="tab-overview">
+    <div class="totals">
+      <div class="totbox"><div class="n" id="ovDays">0</div><div class="l">旅程天數</div></div>
+      <div class="totbox"><div class="n" id="ovPhotos">0</div><div class="l">照片張數</div></div>
+      <div class="totbox"><div class="n" id="ovAvg">NT$0</div><div class="l">平均每日花費</div></div>
+    </div>
+    <div class="card"><h2>📅 每日花費</h2><div id="ovPerDay"></div></div>
+    <div class="card"><h2>✍️ 日記進度</h2><div id="ovJournal"></div></div>
+  </section>
+
+  <!-- 設定 -->
+  <section class="tab" id="tab-settings">
+    <div class="card">
+      <h2>👤 基本設定</h2>
+      <div class="field"><label>你的名字（記帳會顯示付款人）</label><input id="setName" placeholder="例如：Daniel"></div>
+      <div class="rowflex">
+        <div class="field"><label>出發日</label><input id="setStart" type="date"></div>
+        <div class="field"><label>天數</label><input id="setDays" type="number" min="1" max="60"></div>
+      </div>
+      <div class="field"><label>匯率（1 日圓 = ? 台幣）</label><input id="setRate" type="number" step="0.001" inputmode="decimal"></div>
+      <button class="btn" id="saveBasic">儲存基本設定</button>
+    </div>
+    <div class="card">
+      <h2>☁️ 兩人共用同步（GitHub）</h2>
+      <p class="muted">兩支手機貼上同一組 token，資料就會透過你的 private repo 同步（日記、照片、花費）。token 建立方式請看 repo 裡的 README。</p>
+      <div class="field"><label>GitHub Token</label><input id="setToken" type="password" placeholder="github_pat_… 或 ghp_…" autocomplete="off"></div>
+      <div class="field"><label>Repo（owner/name）</label><input id="setRepo"></div>
+      <div class="rowflex">
+        <button class="btn" id="saveSync">儲存並測試連線</button>
+        <button class="btn sec" id="syncNow">立即同步</button>
+      </div>
+      <div class="statusline" id="syncStatus">尚未設定同步</div>
+    </div>
+    <div class="card">
+      <h2>💾 備份</h2>
+      <p class="muted">匯出文字資料（日記與花費，不含照片檔）作為備份，也可以在另一支手機匯入合併。</p>
+      <div class="rowflex">
+        <button class="btn sec" id="exportBtn">匯出 JSON</button>
+        <button class="btn sec" id="importBtn">匯入 JSON</button>
+      </div>
+      <input type="file" id="importFile" accept="application/json" hidden>
+    </div>
+    <div class="card">
+      <h2>ℹ️ 使用小提醒</h2>
+      <p class="muted">
+        · 用 Safari／Chrome 開啟後，選「加入主畫面」就能像 app 一樣使用，離線也能記錄。<br>
+        · 照片會自動壓縮後上傳，兩人手機都看得到。<br>
+        · 同一天的日記若兩人同時離線編輯，同步時會保留較晚儲存的版本；花費和照片則會自動合併、不會弄丟。
+      </p>
+    </div>
+  </section>
+</main>
+
+<nav class="bottom">
+  <button data-tab="day" class="sel"><span class="ic">📓</span><span class="lb">今日</span></button>
+  <button data-tab="exp"><span class="ic">💴</span><span class="lb">花費</span></button>
+  <button data-tab="album"><span class="ic">📷</span><span class="lb">相簿</span></button>
+  <button data-tab="overview"><span class="ic">📊</span><span class="lb">總覽</span></button>
+  <button data-tab="settings"><span class="ic">⚙️</span><span class="lb">設定</span></button>
+</nav>
+
+<!-- 記帳 sheet -->
+<div class="sheetwrap" id="expSheet">
+  <div class="mask"></div>
+  <div class="sheet">
+    <h3 id="expSheetTitle">記一筆</h3>
+    <div class="rowflex">
+      <div class="field" style="flex:2"><label>金額</label><input id="expAmt" type="number" inputmode="decimal" placeholder="0"></div>
+      <div class="field"><label>幣別</label><select id="expCur"><option value="JPY">日圓 ¥</option><option value="TWD">台幣 NT$</option></select></div>
+    </div>
+    <div class="field"><label>分類</label><div class="catchips" id="expCats"></div></div>
+    <div class="field"><label>說明（選填）</label><input id="expNote" placeholder="例如：暖暮拉麵"></div>
+    <div class="rowflex">
+      <div class="field"><label>日期</label><input id="expDate" type="date"></div>
+      <div class="field"><label>付款人</label><input id="expPayer"></div>
+    </div>
+    <div class="rowflex">
+      <button class="btn sec" id="expCancel">取消</button>
+      <button class="btn warn" id="expDelete" style="display:none">刪除</button>
+      <button class="btn" id="expSave">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 照片檢視 -->
+<div class="viewer" id="viewer">
+  <img id="viewerImg" alt="">
+  <div class="vbar">
+    <div class="vcap" id="viewerCap"></div>
+    <button class="btn small sec" id="viewerEditCap">改說明</button>
+    <button class="btn small warn" id="viewerDel">刪除</button>
+    <button class="btn small" id="viewerClose">關閉</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<input type="file" id="photoInput" accept="image/*" multiple hidden>
+
+<script>
+'use strict';
+/* ---------- 小工具 ---------- */
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+const pad=n=>String(n).padStart(2,'0');
+const dstr=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const addDays=(s,n)=>{const d=new Date(s+'T12:00:00');d.setDate(d.getDate()+n);return dstr(d);};
+const WD=['日','一','二','三','四','五','六'];
+const fmtDate=s=>{const d=new Date(s+'T12:00:00');return `${d.getMonth()+1}/${d.getDate()}（${WD[d.getDay()]}）`;};
+const fmtJPY=n=>'¥'+Math.round(n).toLocaleString();
+const fmtTWD=n=>'NT$'+Math.round(n).toLocaleString();
+const now=()=>Date.now();
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),2500);}
+const CATS=[['food','🍜','餐飲'],['transport','🚗','交通'],['stay','🏨','住宿'],['ticket','🎟️','門票'],['shopping','🛍️','購物'],['other','📦','其他']];
+const catIcon=id=>(CATS.find(c=>c[0]===id)||CATS[5])[1];
+const catName=id=>(CATS.find(c=>c[0]===id)||CATS[5])[2];
+
+/* ---------- 設定 ---------- */
+const DEFAULTS={name:'',rate:0.205,token:'',repo:'justdanielooo/Travel-to-Okinawa',startDate:'2026-07-16',days:20};
+let settings={...DEFAULTS,...JSON.parse(localStorage.getItem('okitrip.settings')||'{}')};
+function saveSettings(){localStorage.setItem('okitrip.settings',JSON.stringify(settings));}
+
+/* ---------- IndexedDB ---------- */
+let db;
+function openDB(){return new Promise((res,rej)=>{
+  const r=indexedDB.open('okitrip',1);
+  r.onupgradeneeded=()=>{const d=r.result;
+    if(!d.objectStoreNames.contains('days'))d.createObjectStore('days',{keyPath:'date'});
+    if(!d.objectStoreNames.contains('blobs'))d.createObjectStore('blobs',{keyPath:'id'});
+  };
+  r.onsuccess=()=>res(db=r.result); r.onerror=()=>rej(r.error);
+});}
+const tx=(store,mode)=>db.transaction(store,mode).objectStore(store);
+const idbGet=(s,k)=>new Promise((res,rej)=>{const r=tx(s,'readonly').get(k);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});
+const idbPut=(s,v)=>new Promise((res,rej)=>{const r=tx(s,'readwrite').put(v);r.onsuccess=()=>res();r.onerror=()=>rej(r.error);});
+const idbDel=(s,k)=>new Promise((res,rej)=>{const r=tx(s,'readwrite').delete(k);r.onsuccess=()=>res();r.onerror=()=>rej(r.error);});
+const idbAll=s=>new Promise((res,rej)=>{const r=tx(s,'readonly').getAll();r.onsuccess=()=>res(r.result||[]);r.onerror=()=>rej(r.error);});
+
+/* ---------- 資料模型 ---------- */
+// day doc: {date, journal:{text,updatedAt,updatedBy}, expenses:{id:{...}}, photos:{id:{...}}, dirty, sha}
+const docs=new Map();
+function blankDoc(date){return {date,journal:{text:'',updatedAt:0,updatedBy:''},expenses:{},photos:{},dirty:false,sha:null};}
+async function getDoc(date){
+  if(docs.has(date))return docs.get(date);
+  const d=(await idbGet('days',date))||blankDoc(date);
+  docs.set(date,d); return d;
+}
+async function saveDoc(d,markDirty=true){
+  if(markDirty)d.dirty=true;
+  docs.set(d.date,d);
+  await idbPut('days',d);
+  if(markDirty)scheduleSync();
+}
+function tripDates(){const a=[];for(let i=0;i<settings.days;i++)a.push(addDays(settings.startDate,i));return a;}
+function dayNo(date){return tripDates().indexOf(date)+1;}
+
+/* ---------- 合併（兩人共用的核心） ---------- */
+function mergeDocs(local,remote){
+  const out=blankDoc(local.date);
+  out.journal=(remote.journal&&remote.journal.updatedAt>(local.journal?.updatedAt||0))?remote.journal:(local.journal||out.journal);
+  for(const src of [remote,local]){ // local 後蓋，之後再比 updatedAt
+    for(const key of ['expenses','photos']){
+      for(const id in (src[key]||{})){
+        const cur=out[key][id], cand=src[key][id];
+        if(!cur||cand.updatedAt>cur.updatedAt)out[key][id]=cand;
+      }
+    }
+  }
+  return out;
+}
+const docPayload=d=>JSON.stringify({date:d.date,journal:d.journal,expenses:d.expenses,photos:d.photos},null,1);
+
+/* ---------- GitHub 同步 ---------- */
+const GH={
+  base(){return 'https://api.github.com/repos/'+settings.repo;},
+  headers(extra){return {Authorization:'Bearer '+settings.token,'X-GitHub-Api-Version':'2022-11-28',Accept:'application/vnd.github+json',...extra};},
+  async getFile(path){
+    const r=await fetch(this.base()+'/contents/'+path,{headers:this.headers()});
+    if(r.status===404)return null;
+    if(!r.ok)throw new Error('讀取失敗 HTTP '+r.status);
+    const j=await r.json();
+    const bytes=Uint8Array.from(atob(j.content.replace(/\n/g,'')),c=>c.charCodeAt(0));
+    return {sha:j.sha,text:new TextDecoder().decode(bytes)};
+  },
+  async putFile(path,contentB64,sha,message){
+    const body={message,content:contentB64}; if(sha)body.sha=sha;
+    const r=await fetch(this.base()+'/contents/'+path,{method:'PUT',headers:this.headers(),body:JSON.stringify(body)});
+    if(!r.ok){const e=new Error('寫入失敗 HTTP '+r.status);e.status=r.status;throw e;}
+    return (await r.json()).content.sha;
+  },
+  async listDir(path){
+    const r=await fetch(this.base()+'/contents/'+path,{headers:this.headers()});
+    if(r.status===404)return [];
+    if(!r.ok)throw new Error('列表失敗 HTTP '+r.status);
+    return await r.json();
+  },
+  async getBlob(path){
+    const r=await fetch(this.base()+'/contents/'+path,{headers:this.headers({Accept:'application/vnd.github.raw+json'})});
+    if(!r.ok)return null;
+    return await r.blob();
+  }
+};
+const b64encodeText=t=>{const b=new TextEncoder().encode(t);let s='';b.forEach(c=>s+=String.fromCharCode(c));return btoa(s);};
+const blobToB64=blob=>new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result.split(',')[1]);fr.readAsDataURL(blob);});
+
+let syncTimer=null, syncing=false, syncQueued=false;
+function scheduleSync(){clearTimeout(syncTimer);syncTimer=setTimeout(()=>syncAll(true),2500);}
+function setSyncUI(state,msg){
+  $('#syncDot').className=state;
+  if(msg!==undefined)$('#syncStatus').textContent=msg;
+}
+async function syncAll(silent){
+  if(!settings.token||!settings.repo){if(!silent){toast('請先到「設定」填入 GitHub token');}return;}
+  if(!navigator.onLine){setSyncUI('err','目前離線，恢復連線後會自動同步');return;}
+  if(syncing){syncQueued=true;return;}
+  syncing=true; setSyncUI('busy','同步中…');
+  try{
+    // 1. 集合：本地所有天 + 遠端 days/ 目錄
+    const localDays=await idbAll('days');
+    const remoteList=await GH.listDir('days');
+    const remoteMap={}; remoteList.forEach(f=>{const m=f.name.match(/^(\d{4}-\d{2}-\d{2})\.json$/);if(m)remoteMap[m[1]]=f.sha;});
+    const allDates=new Set([...localDays.map(d=>d.date),...Object.keys(remoteMap)]);
+    for(const date of allDates){
+      let local=await getDoc(date);
+      const remoteSha=remoteMap[date]||null;
+      const needPull=remoteSha&&remoteSha!==local.sha;
+      const needPush=local.dirty;
+      if(!needPull&&!needPush)continue;
+      let merged=local, sha=local.sha;
+      if(needPull){
+        const rf=await GH.getFile('days/'+date+'.json');
+        if(rf){merged=mergeDocs(local,JSON.parse(rf.text));sha=rf.sha;
+          if(docPayload(merged)===rf.text){ // 遠端已是最新
+            merged.sha=rf.sha; merged.dirty=false; await saveDoc(merged,false); continue;
+          }
+        }
+      }
+      // push（帶重試處理衝突）
+      let ok=false;
+      for(let i=0;i<3&&!ok;i++){
+        try{
+          const newSha=await GH.putFile('days/'+date+'.json',b64encodeText(docPayload(merged)),sha,`update ${date} by ${settings.name||'user'}`);
+          merged.sha=newSha; merged.dirty=false; await saveDoc(merged,false); ok=true;
+        }catch(e){
+          if(e.status===409||e.status===422){
+            const rf=await GH.getFile('days/'+date+'.json');
+            if(rf){merged=mergeDocs(merged,JSON.parse(rf.text));sha=rf.sha;}
+          }else throw e;
+        }
+      }
+    }
+    // 2. 上傳還沒上傳的照片檔
+    const blobs=await idbAll('blobs');
+    for(const b of blobs){
+      if(b.uploaded)continue;
+      try{
+        await GH.putFile('photos/'+b.id+'.jpg',await blobToB64(b.blob),null,'photo '+b.id);
+        b.uploaded=true; await idbPut('blobs',b);
+      }catch(e){
+        if(e.status===422){b.uploaded=true;await idbPut('blobs',b);} // 已存在
+        else throw e;
+      }
+    }
+    settings.lastSync=now(); saveSettings();
+    setSyncUI('ok','上次同步：'+new Date().toLocaleTimeString());
+    renderAll();
+  }catch(e){
+    console.error(e);
+    setSyncUI('err','同步失敗：'+(e.message||e)+(String(e.message).includes('401')?'（token 可能貼錯或過期）':''));
+    if(!silent)toast('同步失敗，稍後會再自動嘗試');
+  }finally{
+    syncing=false;
+    if(syncQueued){syncQueued=false;syncAll(true);}
+  }
+}
+
+/* ---------- 照片 ---------- */
+async function compressImage(file){
+  const bmp=await createImageBitmap(file);
+  const MAX=1400, scale=Math.min(1,MAX/Math.max(bmp.width,bmp.height));
+  const w=Math.round(bmp.width*scale), h=Math.round(bmp.height*scale);
+  const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+  cv.getContext('2d').drawImage(bmp,0,0,w,h);
+  const blob=await new Promise(res=>cv.toBlob(res,'image/jpeg',0.72));
+  return {blob,w,h};
+}
+const urlCache=new Map();
+async function photoURL(id){
+  if(urlCache.has(id))return urlCache.get(id);
+  let rec=await idbGet('blobs',id);
+  if(!rec&&settings.token){
+    const blob=await GH.getBlob('photos/'+id+'.jpg');
+    if(blob){rec={id,blob,uploaded:true};await idbPut('blobs',rec);}
+  }
+  if(!rec)return null;
+  const u=URL.createObjectURL(rec.blob); urlCache.set(id,u); return u;
+}
+async function addPhotos(files,date){
+  const doc=await getDoc(date);
+  for(const f of files){
+    try{
+      const {blob,w,h}=await compressImage(f);
+      const id=uid();
+      await idbPut('blobs',{id,blob,uploaded:false});
+      doc.photos[id]={id,caption:'',ts:now(),updatedAt:now(),by:settings.name,w,h};
+    }catch(e){console.error(e);toast('有一張照片處理失敗');}
+  }
+  await saveDoc(doc); renderAll();
+  toast('已加入照片'+(settings.token?'，同步中…':'（尚未設定同步）'));
+}
+
+/* ---------- 畫面 ---------- */
+let currentDate=null, currentTab='day';
+function initCurrentDate(){
+  const t=dstr(new Date()), list=tripDates();
+  currentDate=list.includes(t)?t:list[0];
+}
+function renderHeader(){
+  const list=tripDates();
+  $('#tripSub').textContent=`${fmtDate(list[0])} — ${fmtDate(list[list.length-1])} · 共 ${settings.days} 天`;
+  const wrap=$('#dayChips'); wrap.innerHTML='';
+  list.forEach((d,i)=>{
+    const el=document.createElement('div');
+    el.className='chip'+(d===currentDate?' sel':'');
+    el.innerHTML=`<div class="d1">Day ${i+1}</div><div class="d2">${d.slice(5).replace('-','/')}</div>`;
+    el.onclick=()=>{currentDate=d;renderAll();switchTab('day');};
+    wrap.appendChild(el);
+  });
+  const sel=wrap.querySelector('.sel'); if(sel)sel.scrollIntoView({inline:'center',block:'nearest'});
+}
+async function renderDay(){
+  const doc=await getDoc(currentDate);
+  const j=$('#journal');
+  if(document.activeElement!==j)j.value=doc.journal.text||'';
+  $('#journalMeta').textContent=doc.journal.updatedAt?`${doc.journal.updatedBy||''} ${new Date(doc.journal.updatedAt).toLocaleString()}`:'';
+  // photos
+  const grid=$('#dayPhotos'); grid.innerHTML='';
+  const phs=Object.values(doc.photos).filter(p=>!p.deleted).sort((a,b)=>a.ts-b.ts);
+  $('#dayPhotoCount').textContent=phs.length?phs.length+' 張':'';
+  for(const p of phs)grid.appendChild(photoCell(p,doc));
+  const add=document.createElement('div');
+  add.className='ph addph'; add.textContent='＋';
+  add.onclick=()=>{$('#photoInput')._date=currentDate;$('#photoInput').click();};
+  grid.appendChild(add);
+  // expenses
+  const list=Object.values(doc.expenses).filter(e=>!e.deleted).sort((a,b)=>a.ts-b.ts);
+  const box=$('#dayExpenses'); box.innerHTML='';
+  if(!list.length)box.innerHTML='<div class="empty">今天還沒有記帳</div>';
+  list.forEach(e=>box.appendChild(expRow(e)));
+  const tot=list.reduce((s,e)=>s+toTWD(e),0);
+  $('#dayExpTotal').textContent=list.length?('合計 '+fmtTWD(tot)):'';
+}
+function photoCell(p,doc){
+  const el=document.createElement('div'); el.className='ph';
+  const img=document.createElement('img'); img.loading='lazy'; img.alt=p.caption||'';
+  el.appendChild(img);
+  photoURL(p.id).then(u=>{if(u)img.src=u;else el.insertAdjacentHTML('beforeend','<div class="pending">未同步</div>');});
+  idbGet('blobs',p.id).then(b=>{if(b&&!b.uploaded)el.insertAdjacentHTML('beforeend','<div class="pending">待上傳</div>');});
+  el.onclick=()=>openViewer(p,doc);
+  return el;
+}
+const toTWD=e=>e.currency==='JPY'?e.amount*settings.rate:e.amount;
+function expRow(e){
+  const el=document.createElement('div'); el.className='exp-row';
+  const amt=e.currency==='JPY'?fmtJPY(e.amount):fmtTWD(e.amount);
+  const sub=e.currency==='JPY'?`<span class="twd">≈ ${fmtTWD(toTWD(e))}</span>`:'';
+  el.innerHTML=`<div class="exp-cat">${catIcon(e.category)}</div>
+    <div class="exp-main"><div class="t1">${escapeHtml(e.note||catName(e.category))}</div>
+    <div class="t2">${catName(e.category)}${e.payer?' · '+escapeHtml(e.payer):''}</div></div>
+    <div class="exp-amt">${amt}${sub}</div>`;
+  el.onclick=()=>openExpSheet(e.date,e);
+  return el;
+}
+function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+async function renderExpenses(){
+  const dates=tripDates(); let totJ=0,totT=0; const byCat={},byDay=$('#expByDay');
+  byDay.innerHTML='';
+  for(const d of dates){
+    const doc=await getDoc(d);
+    const list=Object.values(doc.expenses).filter(e=>!e.deleted).sort((a,b)=>a.ts-b.ts);
+    if(!list.length)continue;
+    const lbl=document.createElement('div');lbl.className='daylabel';
+    const dayTot=list.reduce((s,e)=>s+toTWD(e),0);
+    lbl.textContent=`Day ${dayNo(d)} · ${fmtDate(d)} — ${fmtTWD(dayTot)}`;
+    byDay.appendChild(lbl);
+    const card=document.createElement('div');card.className='card';
+    list.forEach(e=>{
+      card.appendChild(expRow(e));
+      if(e.currency==='JPY')totJ+=e.amount;
+      totT+=toTWD(e);
+      byCat[e.category]=(byCat[e.category]||0)+toTWD(e);
+    });
+    byDay.appendChild(card);
+  }
+  if(!byDay.children.length)byDay.innerHTML='<div class="empty">還沒有任何記帳，按右下角「＋記一筆」開始</div>';
+  $('#totJPY').textContent=fmtJPY(totJ);
+  $('#totTWD').textContent=fmtTWD(totT);
+  const cs=$('#catStats'); cs.innerHTML='';
+  const max=Math.max(1,...Object.values(byCat));
+  CATS.forEach(([id,ic,nm])=>{
+    if(!byCat[id])return;
+    cs.insertAdjacentHTML('beforeend',
+      `<div class="catline"><div class="row"><span>${ic} ${nm}</span><b>${fmtTWD(byCat[id])}</b></div>
+       <div class="bar"><i style="width:${Math.round(byCat[id]/max*100)}%"></i></div></div>`);
+  });
+  if(!cs.children.length)cs.innerHTML='<div class="empty">尚無資料</div>';
+}
+async function renderAlbum(){
+  const wrap=$('#albumByDay'); wrap.innerHTML='';
+  for(const d of tripDates()){
+    const doc=await getDoc(d);
+    const phs=Object.values(doc.photos).filter(p=>!p.deleted).sort((a,b)=>a.ts-b.ts);
+    if(!phs.length)continue;
+    const lbl=document.createElement('div');lbl.className='daylabel';
+    lbl.textContent=`Day ${dayNo(d)} · ${fmtDate(d)} — ${phs.length} 張`;
+    wrap.appendChild(lbl);
+    const card=document.createElement('div');card.className='card';
+    const grid=document.createElement('div');grid.className='photogrid';
+    phs.forEach(p=>grid.appendChild(photoCell(p,doc)));
+    card.appendChild(grid); wrap.appendChild(card);
+  }
+  if(!wrap.children.length)wrap.innerHTML='<div class="empty">還沒有照片，到「今日」頁按＋加入</div>';
+}
+async function renderOverview(){
+  let photos=0,tot=0,daysWithJournal=0; const per=[];
+  for(const d of tripDates()){
+    const doc=await getDoc(d);
+    const p=Object.values(doc.photos).filter(x=>!x.deleted).length;
+    const t=Object.values(doc.expenses).filter(x=>!x.deleted).reduce((s,e)=>s+toTWD(e),0);
+    photos+=p; tot+=t;
+    if((doc.journal.text||'').trim())daysWithJournal++;
+    per.push([d,t]);
+  }
+  $('#ovDays').textContent=settings.days;
+  $('#ovPhotos').textContent=photos;
+  const elapsed=Math.max(1,Math.min(settings.days,Math.floor((Date.now()-new Date(settings.startDate+'T00:00:00'))/86400000)+1));
+  $('#ovAvg').textContent=fmtTWD(tot/elapsed);
+  const max=Math.max(1,...per.map(x=>x[1]));
+  $('#ovPerDay').innerHTML=per.map(([d,t])=>
+    `<div class="catline"><div class="row"><span>Day ${dayNo(d)} ${fmtDate(d)}</span><b>${t?fmtTWD(t):'—'}</b></div>
+     <div class="bar"><i style="width:${Math.round(t/max*100)}%"></i></div></div>`).join('');
+  $('#ovJournal').innerHTML=`<div class="muted">已寫 ${daysWithJournal} / ${settings.days} 天</div>
+    <div class="bar" style="margin-top:8px"><i style="width:${Math.round(daysWithJournal/settings.days*100)}%"></i></div>`;
+}
+function renderSettings(){
+  $('#setName').value=settings.name; $('#setRate').value=settings.rate;
+  $('#setStart').value=settings.startDate; $('#setDays').value=settings.days;
+  $('#setToken').value=settings.token; $('#setRepo').value=settings.repo;
+  if(settings.lastSync)setSyncUI(settings.token?'ok':'','上次同步：'+new Date(settings.lastSync).toLocaleString());
+}
+function renderAll(){
+  renderHeader();
+  ({day:renderDay,exp:renderExpenses,album:renderAlbum,overview:renderOverview,settings:renderSettings})[currentTab]();
+}
+function switchTab(t){
+  currentTab=t;
+  $$('nav.bottom button').forEach(b=>b.classList.toggle('sel',b.dataset.tab===t));
+  $$('section.tab').forEach(s=>s.classList.toggle('show',s.id==='tab-'+t));
+  renderAll();
+  window.scrollTo(0,0);
+}
+
+/* ---------- 記帳 sheet ---------- */
+let editingExp=null;
+function openExpSheet(date,exp){
+  editingExp=exp||null;
+  $('#expSheetTitle').textContent=exp?'編輯這筆':'記一筆';
+  $('#expAmt').value=exp?exp.amount:'';
+  $('#expCur').value=exp?exp.currency:'JPY';
+  $('#expNote').value=exp?exp.note:'';
+  $('#expDate').value=exp?exp.date:date;
+  $('#expPayer').value=exp?(exp.payer||''):settings.name;
+  $('#expDelete').style.display=exp?'':'none';
+  const cats=$('#expCats'); cats.innerHTML='';
+  CATS.forEach(([id,ic,nm])=>{
+    const c=document.createElement('div');
+    c.className='c'+(((exp&&exp.category)||'food')===id?' sel':'');
+    c.textContent=ic+' '+nm; c.dataset.id=id;
+    c.onclick=()=>{$$('#expCats .c').forEach(x=>x.classList.remove('sel'));c.classList.add('sel');};
+    cats.appendChild(c);
+  });
+  $('#expSheet').classList.add('show');
+  setTimeout(()=>$('#expAmt').focus(),100);
+}
+async function saveExp(){
+  const amount=parseFloat($('#expAmt').value);
+  if(!amount||amount<=0){toast('請輸入金額');return;}
+  const date=$('#expDate').value||currentDate;
+  const rec={
+    id:editingExp?editingExp.id:uid(), date,
+    amount, currency:$('#expCur').value,
+    category:($('#expCats .c.sel')||{}).dataset?.id||'other',
+    note:$('#expNote').value.trim(), payer:$('#expPayer').value.trim(),
+    ts:editingExp?editingExp.ts:now(), updatedAt:now(), by:settings.name
+  };
+  if(editingExp&&editingExp.date!==date){ // 換日期：舊的標刪除
+    const old=await getDoc(editingExp.date);
+    if(old.expenses[rec.id]){old.expenses[rec.id]={...old.expenses[rec.id],deleted:true,updatedAt:now()};await saveDoc(old);}
+    rec.id=uid();
+  }
+  const doc=await getDoc(date);
+  doc.expenses[rec.id]=rec;
+  await saveDoc(doc);
+  $('#expSheet').classList.remove('show');
+  renderAll();
+}
+async function deleteExp(){
+  if(!editingExp)return;
+  const doc=await getDoc(editingExp.date);
+  doc.expenses[editingExp.id]={...doc.expenses[editingExp.id],deleted:true,updatedAt:now()};
+  await saveDoc(doc);
+  $('#expSheet').classList.remove('show');
+  renderAll();
+}
+
+/* ---------- 照片檢視器 ---------- */
+let viewing=null;
+async function openViewer(p,doc){
+  viewing={p,doc};
+  $('#viewerCap').textContent=p.caption||`Day ${dayNo(doc.date)} ${fmtDate(doc.date)}`;
+  $('#viewerImg').src=await photoURL(p.id)||'';
+  $('#viewer').classList.add('show');
+}
+
+/* ---------- 匯出／匯入 ---------- */
+async function exportJSON(){
+  const days=await idbAll('days');
+  const data={app:'okitrip',exportedAt:new Date().toISOString(),
+    settings:{...settings,token:undefined},
+    days:days.map(d=>({date:d.date,journal:d.journal,expenses:d.expenses,photos:d.photos}))};
+  const blob=new Blob([JSON.stringify(data,null,1)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download='okinawa-backup-'+dstr(new Date())+'.json';
+  a.click();
+}
+async function importJSON(file){
+  try{
+    const data=JSON.parse(await file.text());
+    if(data.app!=='okitrip')throw new Error('格式不符');
+    for(const rd of (data.days||[])){
+      const local=await getDoc(rd.date);
+      const merged=mergeDocs(local,{...blankDoc(rd.date),...rd});
+      merged.sha=local.sha; merged.dirty=true;
+      await saveDoc(merged);
+    }
+    renderAll(); toast('匯入完成，已合併資料');
+  }catch(e){toast('匯入失敗：'+e.message);}
+}
+
+/* ---------- 事件 ---------- */
+function bind(){
+  $$('nav.bottom button').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
+  let jTimer;
+  $('#journal').addEventListener('input',()=>{
+    clearTimeout(jTimer);
+    jTimer=setTimeout(async()=>{
+      const doc=await getDoc(currentDate);
+      doc.journal={text:$('#journal').value,updatedAt:now(),updatedBy:settings.name};
+      await saveDoc(doc);
+      $('#journalMeta').textContent='已儲存 '+new Date().toLocaleTimeString();
+    },700);
+  });
+  $('#photoInput').addEventListener('change',e=>{
+    if(e.target.files.length)addPhotos([...e.target.files],e.target._date||currentDate);
+    e.target.value='';
+  });
+  $('#addExpBtn').onclick=()=>openExpSheet(currentDate);
+  $('#addExpBtn2').onclick=()=>openExpSheet(currentDate);
+  $('#expSave').onclick=saveExp;
+  $('#expCancel').onclick=()=>$('#expSheet').classList.remove('show');
+  $('#expDelete').onclick=deleteExp;
+  $('#expSheet .mask').onclick=()=>$('#expSheet').classList.remove('show');
+  $('#viewerClose').onclick=()=>$('#viewer').classList.remove('show');
+  $('#viewerDel').onclick=async()=>{
+    if(!viewing)return;
+    if(!confirm('確定刪除這張照片？'))return;
+    const {p,doc}=viewing;
+    doc.photos[p.id]={...doc.photos[p.id],deleted:true,updatedAt:now()};
+    await saveDoc(doc); await idbDel('blobs',p.id);
+    $('#viewer').classList.remove('show'); renderAll();
+  };
+  $('#viewerEditCap').onclick=async()=>{
+    if(!viewing)return;
+    const t=prompt('照片說明',viewing.p.caption||''); if(t===null)return;
+    const {p,doc}=viewing;
+    doc.photos[p.id]={...doc.photos[p.id],caption:t,updatedAt:now()};
+    await saveDoc(doc);
+    $('#viewerCap').textContent=t;
+  };
+  $('#saveBasic').onclick=()=>{
+    settings.name=$('#setName').value.trim();
+    settings.rate=parseFloat($('#setRate').value)||DEFAULTS.rate;
+    settings.startDate=$('#setStart').value||DEFAULTS.startDate;
+    settings.days=Math.max(1,Math.min(60,parseInt($('#setDays').value)||20));
+    saveSettings(); initCurrentDate(); renderAll(); toast('已儲存');
+  };
+  $('#saveSync').onclick=async()=>{
+    settings.token=$('#setToken').value.trim();
+    settings.repo=$('#setRepo').value.trim()||DEFAULTS.repo;
+    saveSettings();
+    if(!settings.token){setSyncUI('','尚未設定同步');return;}
+    setSyncUI('busy','測試連線中…');
+    try{
+      const r=await fetch(GH.base(),{headers:GH.headers()});
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      setSyncUI('ok','連線成功！開始同步…');
+      syncAll(false);
+    }catch(e){setSyncUI('err','連線失敗：'+e.message+'（請確認 token 與 repo 名稱）');}
+  };
+  $('#syncNow').onclick=()=>syncAll(false);
+  $('#exportBtn').onclick=exportJSON;
+  $('#importBtn').onclick=()=>$('#importFile').click();
+  $('#importFile').addEventListener('change',e=>{if(e.target.files[0])importJSON(e.target.files[0]);e.target.value='';});
+  window.addEventListener('online',()=>syncAll(true));
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncAll(true);});
+}
+
+/* ---------- 啟動 ---------- */
+(async function(){
+  await openDB();
+  initCurrentDate();
+  bind();
+  renderAll();
+  if(settings.token)syncAll(true);
+  if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(()=>{});
+})();
+</script>
+</body>
+</html>
