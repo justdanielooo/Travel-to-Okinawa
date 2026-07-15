@@ -8,43 +8,44 @@
 - 👫 **兩人共用** — 你和太太的手機透過這個 private repo 同步同一份資料
 - ✈️ **離線可用** — 沒網路照樣記錄，恢復連線自動同步
 
-App 本體是純靜態網頁（`index.html`），不含任何個人資料；所有旅行資料（`days/`、`photos/`）由 app 透過 GitHub API 存回這個 **private repo**，只有你們自己看得到。
+架構是「app 與資料分家」：
+
+| Repo | 公開/私有 | 內容 |
+|---|---|---|
+| `Travel-to-Okinawa`（本 repo） | **Public** | 只有 app 程式碼（不含任何個資），用 GitHub Pages 出網址 |
+| `okinawa-data` | **Private** | 你們的旅行資料：`days/*.json`、`photos/*.jpg`，只有持 token 的人能存取 |
+
+app 內建防呆：如果偵測到資料 repo 是公開的，會拒絕同步並跳出警告。
 
 ---
 
-## 出發前的 3 個設定步驟（約 10 分鐘）
+## 出發前的 3 個設定步驟（約 8 分鐘）
 
-### 步驟 1：建立 GitHub Token（在電腦上做，2 分鐘）
+### 步驟 1：建立 private 資料倉庫（1 分鐘）
+
+1. 到 <https://github.com/new>
+2. Repository name 填 `okinawa-data`（app 預設就是這個名字，照填最省事）
+3. 選 **Private**，勾 **Add a README file** → Create repository
+
+### 步驟 2：建立 GitHub Token（2 分鐘）
 
 1. 開啟 <https://github.com/settings/personal-access-tokens/new>
 2. Token name 隨意填（例如 `okinawa-app`），**Expiration 選 90 days**
-3. Repository access 選 **Only select repositories** → 勾選 `Travel-to-Okinawa`
+3. Repository access 選 **Only select repositories** → 勾選 `okinawa-data`
 4. Permissions → Repository permissions → **Contents** 設為 **Read and write**
-5. 按 Generate token，**把 `github_pat_…` 複製起來**（傳給自己和太太，例如用 LINE 的 Keep）
+5. 按 Generate token，**把 `github_pat_…` 複製起來**
 
-> 這組 token 只能讀寫這一個 repo，兩支手機都貼同一組即可。
+> 這組 token 只能讀寫 `okinawa-data` 這一個 repo，兩支手機共用同一組。
 
-### 步驟 2：把 app 放上網（擇一，5 分鐘）
+### 步驟 3：把本 repo 改成 Public 並開啟 Pages（3 分鐘）
 
-App 需要一個 https 網址才能加到手機主畫面。因為 app 檔案不含任何個資，放在公開空間是安全的。
+1. 本 repo → **Settings** → General 最下方 **Danger Zone** → Change visibility → **Make public**
+2. 本 repo → **Settings → Pages** → Source 選 `Deploy from a branch`，Branch 選 `claude/okinawa-trip-app-g82tpp` / `(root)` → Save
+3. 等 1–2 分鐘，app 網址就是：**`https://justdanielooo.github.io/Travel-to-Okinawa/`**
 
-**方式 A — GitHub Pages（建議）**
+> 改 public 前請確認：本 repo 裡只有 app 程式碼、沒有任何 `days/` 或 `photos/` 資料夾（資料都存在 private 的 `okinawa-data`）。
 
-GitHub 免費方案的 Pages 只支援 public repo，所以另開一個小的公開 repo 放 app 檔案：
-
-1. 到 <https://github.com/new> 建立新 repo，名稱例如 `okinawa-app`，選 **Public**，勾 Add a README
-2. 進入新 repo → **Add file → Upload files**，把本 repo 這 6 個檔案拖進去上傳：
-   `index.html`、`sw.js`、`manifest.json`、`icon-180.png`、`icon-192.png`、`icon-512.png`
-3. 新 repo 的 **Settings → Pages** → Source 選 `Deploy from a branch`，Branch 選 `main` / `(root)` → Save
-4. 等 1–2 分鐘，網址就是 `https://<你的帳號>.github.io/okinawa-app/`
-
-> 旅行資料**不會**出現在這個公開 repo，資料只存在 private 的 `Travel-to-Okinawa`。
-
-**方式 B — 如果你的 GitHub 是付費方案（Pro）**
-
-直接在本 repo：Settings → Pages → Source 選 `Deploy from a branch`，Branch 選 app 所在分支 → Save。
-
-### 步驟 3：你的手機設定（2 分鐘）
+### 步驟 4：你的手機設定（2 分鐘）
 
 1. 手機瀏覽器開啟上面的網址
 2. 打開 app → 右下角 **設定**：
@@ -53,7 +54,7 @@ GitHub 免費方案的 Pages 只支援 public repo，所以另開一個小的公
 3. 看到「連線成功」就完成了
 4. （選配）iPhone：Safari 分享按鈕 → **加入主畫面**；Android：Chrome 選單 → **加到主畫面**，用起來更像 app
 
-### 步驟 4：太太這邊——什麼都不用裝（30 秒）
+### 步驟 5：太太這邊——什麼都不用裝（30 秒）
 
 1. 你在 app 的「設定」頁按 **💌 產生給另一半的一鍵設定連結**，用 LINE 私訊傳給她
 2. 她**點開連結就自動完成所有設定**，直接開始寫日記、拍照、記帳——不用安裝、不用輸入 token
@@ -74,11 +75,11 @@ GitHub 免費方案的 Pages 只支援 public repo，所以另開一個小的公
 
 | 內容 | 位置 |
 |---|---|
-| 日記＋花費＋照片清單 | 本 repo `days/2026-07-16.json` …（每天一個檔） |
-| 照片檔（已壓縮） | 本 repo `photos/*.jpg` |
+| 日記＋花費＋照片清單 | private repo `okinawa-data` 的 `days/2026-07-16.json` …（每天一個檔） |
+| 照片檔（已壓縮） | private repo `okinawa-data` 的 `photos/*.jpg` |
 | 手機本地快取 | 每支手機的瀏覽器儲存空間（離線用） |
 
-旅行結束後，這個 repo 就是完整的旅行紀錄備份，永久保存。
+旅行結束後，`okinawa-data` 就是完整的旅行紀錄備份，永久保存。
 
 ## 小提醒
 

@@ -299,7 +299,7 @@ const catIcon=id=>(CATS.find(c=>c[0]===id)||CATS[5])[1];
 const catName=id=>(CATS.find(c=>c[0]===id)||CATS[5])[2];
 
 /* ---------- 設定 ---------- */
-const DEFAULTS={name:'',rate:0.205,token:'',repo:'justdanielooo/Travel-to-Okinawa',startDate:'2026-07-16',days:20};
+const DEFAULTS={name:'',rate:0.205,token:'',repo:'justdanielooo/okinawa-data',startDate:'2026-07-16',days:20};
 let settings={...DEFAULTS,...JSON.parse(localStorage.getItem('okitrip.settings')||'{}')};
 function saveSettings(){localStorage.setItem('okitrip.settings',JSON.stringify(settings));}
 
@@ -787,6 +787,11 @@ function bind(){
     try{
       const r=await fetch(GH.base(),{headers:GH.headers()});
       if(!r.ok)throw new Error('HTTP '+r.status);
+      const info=await r.json();
+      if(info.private===false){
+        setSyncUI('err','⚠️ 這個 repo 是「公開」的，日記和照片會被所有人看到！請改填一個 private repo（例如 okinawa-data）再同步。');
+        return;
+      }
       setSyncUI('ok','連線成功！開始同步…');
       syncAll(false);
     }catch(e){setSyncUI('err','連線失敗：'+e.message+'（請確認 token 與 repo 名稱）');}
