@@ -558,8 +558,12 @@ async function syncAll(silent){
       const blobs=await idbAll('blobs');
       for(const b of blobs){
         if(b.uploaded)continue;
+        const blob=blobOf(b);
+        if(!blob||blob.size===0){console.warn('照片資料是空的，跳過上傳',b.id);continue;} // 絕不上傳空檔
+        const b64=await blobToB64(blob);
+        if(!b64)continue;
         try{
-          await GH.putFile('photos/'+b.id+'.jpg',await blobToB64(b.blob),null,'photo '+b.id);
+          await GH.putFile('photos/'+b.id+'.jpg',b64,null,'photo '+b.id);
           b.uploaded=true; await idbPut('blobs',b);
         }catch(e){
           if(e.status===422){b.uploaded=true;await idbPut('blobs',b);} // 已存在
@@ -629,18 +633,25 @@ async function compressImage(file){
   const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
   cv.getContext('2d').drawImage(bmp,0,0,w,h);
   const blob=await new Promise(res=>cv.toBlob(res,'image/jpeg',0.72));
+  if(!blob||!blob.size||!w||!h)throw new Error('壓縮結果是空的');
   return {blob,w,h};
 }
+// Safari 的 IndexedDB 存 Blob 偶爾會讀回空資料，改存 ArrayBuffer 較穩；讀取時兩種格式都相容
+const blobOf=rec=>rec?(rec.buf?new Blob([rec.buf],{type:rec.type||'image/jpeg'}):(rec.blob||null)):null;
 const urlCache=new Map();
 async function photoURL(id){
   if(urlCache.has(id))return urlCache.get(id);
   let rec=await idbGet('blobs',id);
-  if(!rec&&settings.token){
-    const blob=await GH.getBlob('photos/'+id+'.jpg');
-    if(blob){rec={id,blob,uploaded:true};await idbPut('blobs',rec);}
+  let blob=blobOf(rec);
+  if((!blob||!blob.size)&&settings.token){
+    const dl=await GH.getBlob('photos/'+id+'.jpg');
+    if(dl&&dl.size>0){ // 空檔不快取，之後每次重看都會再試一次
+      rec={id,buf:await dl.arrayBuffer(),type:dl.type||'image/jpeg',uploaded:true};
+      await idbPut('blobs',rec); blob=blobOf(rec);
+    }
   }
-  if(!rec)return null;
-  const u=URL.createObjectURL(rec.blob); urlCache.set(id,u); return u;
+  if(!blob||!blob.size)return null;
+  const u=URL.createObjectURL(blob); urlCache.set(id,u); return u;
 }
 async function addPhotos(files,date,momentId){
   if(settings.mode==='viewer'){toast('瀏覽模式無法編輯');return;}
@@ -649,7 +660,7 @@ async function addPhotos(files,date,momentId){
     try{
       const {blob,w,h}=await compressImage(f);
       const id=uid();
-      await idbPut('blobs',{id,blob,uploaded:false});
+      await idbPut('blobs',{id,buf:await blob.arrayBuffer(),type:'image/jpeg',uploaded:false});
       doc.photos[id]={id,caption:'',ts:now(),updatedAt:now(),by:settings.name,w,h,momentId:momentId||null};
     }catch(e){console.error(e);toast('有一張照片處理失敗');}
   }
