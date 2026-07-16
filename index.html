@@ -1177,6 +1177,11 @@ function applySetupLink(){
   try{
     const cfg=JSON.parse(b64decodeText(location.hash.slice(7)));
     if(!cfg.token)return;
+    // 防呆：這支手機已經是「記錄者」的話，點到家人瀏覽連結要先確認，避免誤切成唯讀
+    if(cfg.mode==='viewer'&&settings.token&&settings.mode!=='viewer'){
+      const sure=confirm('這是「親友瀏覽」連結，開啟後這支手機會變成唯讀、無法再寫日記。\n\n你是來看日記的家人請按「確定」；\n如果你是記錄者（本人或另一半）請按「取消」，並改用另一半專屬的設定連結。');
+      if(!sure){history.replaceState(null,'',location.pathname+location.search);return;}
+    }
     settings.token=cfg.token;
     if(cfg.repo)settings.repo=cfg.repo;
     if(cfg.rate)settings.rate=cfg.rate;
@@ -1195,6 +1200,7 @@ function applySetupLink(){
     setTimeout(()=>toast('✅ 設定完成！可以開始記錄了'),400);
   }catch(e){console.error('setup link error',e);}
 }
+window.addEventListener('hashchange',()=>{if(location.hash.startsWith('#setup='))location.reload();});
 (async function(){
   applySetupLink();
   applyMode();
