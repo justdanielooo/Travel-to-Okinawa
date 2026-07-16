@@ -187,6 +187,7 @@ body.vmode .viewerbadge{display:inline-block; font-size:11px; font-weight:400; b
 <main>
   <!-- 今日 -->
   <section class="tab show" id="tab-day">
+    <div id="wxBar" style="display:none; font-size:13px; color:var(--ink2); padding:2px 4px 12px"></div>
     <div class="card" id="trailMapCard" style="display:none">
       <h2>🗺️ 今日軌跡</h2>
       <div id="trailMap"></div>
@@ -625,6 +626,46 @@ async function syncComments(){
   }
 }
 
+/* ---------- 天氣（Open-Meteo，免金鑰） ---------- */
+const WX_CODES={0:['☀️','晴'],1:['🌤️','晴時多雲'],2:['⛅','多雲'],3:['☁️','陰'],45:['🌫️','起霧'],48:['🌫️','起霧'],
+  51:['🌦️','毛毛雨'],53:['🌦️','毛毛雨'],55:['🌧️','細雨'],61:['🌧️','小雨'],63:['🌧️','中雨'],65:['🌧️','大雨'],
+  66:['🌧️','凍雨'],67:['🌧️','凍雨'],80:['🌦️','陣雨'],81:['🌧️','陣雨'],82:['⛈️','強陣雨'],95:['⛈️','雷雨'],96:['⛈️','雷雨'],99:['⛈️','雷雨']};
+const wxIcon=c=>WX_CODES[c]||['🌡️',''];
+let wxCache=JSON.parse(localStorage.getItem('okitrip.wx')||'{}');
+let wxFetching=false;
+async function refreshWeather(force){
+  if(wxFetching||!navigator.onLine)return;
+  if(!force&&wxCache._fetchedAt&&Date.now()-wxCache._fetchedAt<3*3600e3)return; // 3 小時內不重抓
+  wxFetching=true;
+  try{
+    const start=new Date(settings.startDate+'T12:00:00');
+    const pastDays=Math.min(92,Math.max(0,Math.floor((Date.now()-start)/86400000)+1));
+    const r=await fetch('https://api.open-meteo.com/v1/forecast?latitude=26.2124&longitude=127.6809'
+      +'&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=Asia%2FTokyo'
+      +'&past_days='+pastDays+'&forecast_days=16');
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const j=await r.json();
+    (j.daily&&j.daily.time||[]).forEach((d,i)=>{
+      wxCache[d]={c:j.daily.weather_code[i],hi:Math.round(j.daily.temperature_2m_max[i]),lo:Math.round(j.daily.temperature_2m_min[i])};
+    });
+    wxCache._fetchedAt=Date.now();
+    localStorage.setItem('okitrip.wx',JSON.stringify(wxCache));
+    if(currentTab==='day')renderWxBar();
+  }catch(e){console.warn('天氣抓取失敗',e);}
+  finally{wxFetching=false;}
+}
+function renderWxBar(){
+  const el=$('#wxBar'), w=wxCache[currentDate];
+  if(!w){el.style.display='none';return;}
+  const [ic,nm]=wxIcon(w.c);
+  let html=`${ic} 那霸 ${nm} ${w.hi}°／${w.lo}°`;
+  if(currentDate===dstr(new Date())){
+    const tm=wxCache[addDays(currentDate,1)];
+    if(tm){const [i2,n2]=wxIcon(tm.c);html+=`　<span style="opacity:.75">明天 ${i2} ${n2} ${tm.hi}°</span>`;}
+  }
+  el.innerHTML=html; el.style.display='';
+}
+
 /* ---------- 照片 ---------- */
 async function compressImage(file){
   const bmp=await createImageBitmap(file);
@@ -697,6 +738,7 @@ async function renderDay(){
   Object.values(doc.photos).filter(p=>!p.deleted&&p.momentId).forEach(p=>{(phByMoment[p.momentId]??=[]).push(p);});
   for(const m of moments)tl.appendChild(momentCard(m,doc,(phByMoment[m.id]||[]).sort((a,b)=>a.ts-b.ts)));
   if(!moments.length)tl.innerHTML='<div class="empty">'+(settings.mode==='viewer'?'今天還沒有記錄，晚點再來看看 🐾':'按下方「＋新增一站」開始記錄今天的軌跡 🐾')+'</div>';
+  renderWxBar();
   renderTrailMap(moments);
   // 今日總結
   const j=$('#journal');
@@ -1178,8 +1220,12 @@ function bind(){
   $('#importFile').addEventListener('change',e=>{if(e.target.files[0])importJSON(e.target.files[0]);e.target.value='';});
   window.addEventListener('online',()=>syncAll(true));
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncAll(true);});
-  // 頁面開著的時候也定時拉最新資料（另一半剛記的東西 1 分鐘內就會出現）
-  setInterval(()=>{if(!document.hidden&&settings.token&&navigator.onLine)syncAll(true);},60000);
+  // 頁面開著的時候也定時拉最新資料（另一半剛記的東西 1 分鐘內就會出現）；順便刷新天氣（3 小時內不重抓）
+  setInterval(()=>{
+    if(document.hidden||!navigator.onLine)return;
+    refreshWeather();
+    if(settings.token)syncAll(true);
+  },60000);
 }
 
 /* ---------- 啟動 ---------- */
@@ -1219,6 +1265,7 @@ window.addEventListener('hashchange',()=>{if(location.hash.startsWith('#setup=')
   initCurrentDate();
   bind();
   renderAll();
+  refreshWeather();
   if(settings.token)syncAll(true);
   if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(()=>{});
 })();
