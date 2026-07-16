@@ -66,6 +66,19 @@ app 內建防呆：如果偵測到資料 repo 是公開的，會拒絕同步並�
 
 ---
 
+## 開放家人瀏覽＋留言（選配，約 7 分鐘）
+
+家人點連結後：只能看日記、軌跡、相簿，可以留言；看不到花費與總覽，也改不了任何內容（GitHub 權限在伺服器端強制）。
+
+1. **建留言倉庫**：到 <https://github.com/new> 建 `okinawa-comments`，選 **Private**，勾 Add a README
+2. **建兩組 token**（同樣在 [fine-grained token 頁](https://github.com/settings/personal-access-tokens/new)）：
+   - 「資料唯讀」token：只勾 `okinawa-data`，Contents 設 **Read-only**
+   - 「留言」token：只勾 `okinawa-comments`，Contents 設 **Read and write**
+3. **回到 app**：設定 → 「開放家人瀏覽＋留言」→ 貼上兩組 token → 儲存 → 按 **💌 產生家人瀏覽連結**，傳到家族群組
+4. 你和太太的手機各按一次「儲存」（或重新點一次彼此的一鍵設定連結）後，「今日」頁底部就會出現家人的留言，每分鐘自動更新
+
+> 安全性：家人連結內含唯讀鑰匙＋留言鑰匙。最壞情況（連結外流）也只是別人能看到日記與亂留言，動不了你們的資料；隨時可到 GitHub 撤銷這兩組 token。
+
 ## 日常使用
 
 - **記錄**：打開 app 就是今天的頁面，直接寫日記、按＋加照片、按「記一筆」記帳
