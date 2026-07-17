@@ -1007,30 +1007,55 @@ async function deleteExp(){
 }
 
 /* ---------- 軌跡卡片 sheet ---------- */
-let editingMoment=null, mGeo=null;
+let editingMoment=null, mGeo=null, mGeoSource=null, geoSeq=0;
+function showGeoStatus(){
+  const el=$('#mGeoStatus');
+  if(mGeo){
+    el.innerHTML=`已記錄座標 ${(+mGeo.lat).toFixed(5)}, ${(+mGeo.lng).toFixed(5)}${mGeoSource==='auto'?'（自動）':''}
+      <a href="#" id="mGeoClear" style="color:var(--danger);margin-left:6px">清除</a>`;
+    $('#mGeoClear').onclick=e=>{e.preventDefault();mGeo=null;mGeoSource=null;geoSeq++;showGeoStatus();};
+  }else el.textContent='';
+}
+function autoLocate(){ // 開 sheet 時背景定位，打完字座標已就緒
+  if(!navigator.geolocation)return;
+  const seq=++geoSeq;
+  $('#mGeoStatus').textContent='📡 自動定位中…（不需要位置可以直接儲存）';
+  navigator.geolocation.getCurrentPosition(pos=>{
+    if(seq!==geoSeq||!$('#momentSheet').classList.contains('show')||mGeoSource==='manual')return;
+    mGeo={lat:+pos.coords.latitude.toFixed(6),lng:+pos.coords.longitude.toFixed(6)};
+    mGeoSource='auto';
+    showGeoStatus();
+  },()=>{if(seq===geoSeq&&!mGeo)$('#mGeoStatus').textContent='';},
+  {enableHighAccuracy:true,timeout:8000,maximumAge:60000});
+}
 function openMomentSheet(m){
   editingMoment=m||null;
   mGeo=(m&&m.place&&m.place.lat!=null)?{lat:m.place.lat,lng:m.place.lng}:null;
+  mGeoSource=mGeo?'manual':null; // 編輯既有的站時，座標視為已確定，不被自動定位覆蓋
   $('#momentTitle').textContent=m?'編輯這一站':'新增一站';
   $('#mTime').value=m?(m.time||''):new Date().toTimeString().slice(0,5);
   $('#mText').value=m?(m.text||''):'';
   $('#mPlaceName').value=(m&&m.place)?(m.place.name||''):'';
   $('#mPlaceUrl').value=(m&&m.place)?(m.place.url||''):'';
-  $('#mGeoStatus').textContent=mGeo?`已記錄座標 ${(+mGeo.lat).toFixed(5)}, ${(+mGeo.lng).toFixed(5)}`:'';
+  showGeoStatus();
   $('#mDelete').style.display=m?'':'none';
   $('#momentSheet').classList.add('show');
-  if(!m)setTimeout(()=>$('#mText').focus(),100);
+  if(!m){
+    if(settings.mode!=='viewer')autoLocate();
+    setTimeout(()=>$('#mText').focus(),100);
+  }
 }
 async function saveMoment(){
   if(settings.mode==='viewer'){toast('瀏覽模式無法編輯');return;}
   const text=$('#mText').value.trim(), name=$('#mPlaceName').value.trim();
   let url=$('#mPlaceUrl').value.trim();
   if(!text&&!name&&!url){toast('寫點什麼，或加個地點吧');return;}
-  let lat=mGeo?mGeo.lat:null, lng=mGeo?mGeo.lng:null;
-  if(lat==null&&url){ // 嘗試從連結萃取座標
-    const mt=url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)||url.match(/[?&]q=(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/);
-    if(mt){lat=parseFloat(mt[1]);lng=parseFloat(mt[2]);}
-  }
+  // 座標優先序：手動 GPS＞連結內含的座標＞自動定位
+  const mt=url?(url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)||url.match(/[?&]q=(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/)):null;
+  let lat=null, lng=null;
+  if(mGeoSource==='manual'&&mGeo){lat=mGeo.lat;lng=mGeo.lng;}
+  else if(mt){lat=parseFloat(mt[1]);lng=parseFloat(mt[2]);}
+  else if(mGeo){lat=mGeo.lat;lng=mGeo.lng;}
   if(url&&!/^https?:\/\//i.test(url))url='https://'+url;
   const place=(name||url||lat!=null)?{name,url:url||(lat!=null?`https://www.google.com/maps?q=${lat},${lng}`:''),lat,lng}:null;
   const doc=await getDoc(currentDate);
@@ -1113,12 +1138,15 @@ function bind(){
   $('#momentSheet .mask').onclick=()=>$('#momentSheet').classList.remove('show');
   $('#mGPS').onclick=()=>{
     if(!navigator.geolocation){toast('這個裝置不支援定位');return;}
+    const seq=++geoSeq;
     $('#mGeoStatus').textContent='📡 定位中…';
     navigator.geolocation.getCurrentPosition(pos=>{
+      if(seq!==geoSeq)return;
       mGeo={lat:+pos.coords.latitude.toFixed(6),lng:+pos.coords.longitude.toFixed(6)};
+      mGeoSource='manual';
       if(!$('#mPlaceUrl').value.trim())$('#mPlaceUrl').value=`https://www.google.com/maps?q=${mGeo.lat},${mGeo.lng}`;
-      $('#mGeoStatus').textContent=`已記錄座標 ${mGeo.lat}, ${mGeo.lng}`;
-    },err=>{$('#mGeoStatus').textContent='定位失敗：'+err.message+'（請確認已允許定位權限）';},
+      showGeoStatus();
+    },err=>{if(seq===geoSeq)$('#mGeoStatus').textContent='定位失敗：'+err.message+'（請確認已允許定位權限）';},
     {enableHighAccuracy:true,timeout:12000,maximumAge:30000});
   };
   $('#addExpBtn').onclick=()=>openExpSheet(currentDate);
