@@ -152,7 +152,9 @@ nav.bottom button.sel{color:var(--brand)}
 .placechip span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .tlphotos{display:flex; gap:6px; overflow-x:auto; margin-top:10px; scrollbar-width:none}
 .tlphotos::-webkit-scrollbar{display:none}
-.tlphotos .tph{flex:0 0 auto; width:76px; height:76px; border-radius:8px; overflow:hidden; background:var(--bg); border:1px solid var(--line)}
+.tlphotos .tph{flex:0 0 auto; width:76px; height:76px; border-radius:8px; overflow:hidden; background:var(--bg); border:1px solid var(--line); position:relative}
+.tph .rm{position:absolute; top:3px; right:3px; width:22px; height:22px; border:none; border-radius:50%; background:rgba(0,0,0,.55); color:#fff; font-size:13px; line-height:1; cursor:pointer; padding:0}
+.mAddPh{flex:0 0 auto; width:76px; height:76px; border:1px dashed var(--line); border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:26px; color:var(--ink2); cursor:pointer; background:var(--bg)}
 .tlphotos img{width:100%; height:100%; object-fit:cover; display:block}
 .tlacts{display:flex; gap:8px; margin-top:10px}
 #trailMap{height:230px; border-radius:10px; overflow:hidden; z-index:0}
@@ -350,6 +352,7 @@ body.vmode .viewerbadge{display:inline-block; font-size:11px; font-weight:400; b
     <h3 id="momentTitle">新增一站</h3>
     <div class="field" style="max-width:140px"><label>時間</label><input id="mTime" type="time"></div>
     <div class="field"><label>發生了什麼</label><textarea id="mText" placeholder="這一站的見聞、心情…"></textarea></div>
+    <div class="field"><label>照片（選填）</label><div class="tlphotos" id="mPhotos"></div></div>
     <div class="field"><label>地點名稱（選填）</label><input id="mPlaceName" placeholder="例如：美麗海水族館"></div>
     <div class="field"><label>Google Maps 連結（選填）</label><input id="mPlaceUrl" placeholder="貼上 Google Maps 的分享連結"></div>
     <button class="btn sec" id="mGPS" style="width:100%">📍 打卡目前位置（顯示在軌跡地圖上）</button>
@@ -378,6 +381,7 @@ body.vmode .viewerbadge{display:inline-block; font-size:11px; font-weight:400; b
 
 <div class="toast" id="toast"></div>
 <input type="file" id="photoInput" accept="image/*" multiple hidden>
+<input type="file" id="mPhotoInput" accept="image/*" multiple hidden>
 
 <script>
 'use strict';
@@ -1033,6 +1037,34 @@ function hideOverlay(sel){const el=$(sel);if(el.classList.contains('show')){el.c
 
 /* ---------- 軌跡卡片 sheet ---------- */
 let editingMoment=null, mGeo=null, mGeoSource=null, geoSeq=0;
+let mPending=[]; // 尚未儲存的站內照片 {blob,w,h,url}
+function renderMPhotos(){
+  const box=$('#mPhotos'); box.innerHTML='';
+  mPending.forEach((ph,i)=>{
+    const d=document.createElement('div'); d.className='tph';
+    d.innerHTML=`<img src="${ph.url}" alt=""><button class="rm" aria-label="移除">✕</button>`;
+    d.querySelector('.rm').onclick=()=>{URL.revokeObjectURL(ph.url);mPending.splice(i,1);renderMPhotos();};
+    box.appendChild(d);
+  });
+  const add=document.createElement('div'); add.className='mAddPh'; add.textContent='＋';
+  add.onclick=()=>$('#mPhotoInput').click();
+  box.appendChild(add);
+}
+function clearMPending(){mPending.forEach(p=>URL.revokeObjectURL(p.url));mPending=[];}
+function momentDirty(){
+  if(mPending.length)return true;
+  const t=$('#mText').value.trim(), n=$('#mPlaceName').value.trim(), u=$('#mPlaceUrl').value.trim();
+  if(editingMoment){
+    const pl=editingMoment.place||{};
+    return t!==(editingMoment.text||'')||n!==(pl.name||'')||u!==(pl.url||'');
+  }
+  return !!(t||n||u);
+}
+function closeMomentSheet(force){
+  if(!force&&momentDirty()&&!confirm('內容尚未儲存，確定放棄？'))return;
+  clearMPending();
+  hideOverlay('#momentSheet');
+}
 function showGeoStatus(){
   const el=$('#mGeoStatus');
   if(mGeo){
@@ -1055,6 +1087,7 @@ function autoLocate(){ // 開 sheet 時背景定位，打完字座標已就緒
 }
 function openMomentSheet(m){
   editingMoment=m||null;
+  clearMPending(); renderMPhotos();
   mGeo=(m&&m.place&&m.place.lat!=null)?{lat:m.place.lat,lng:m.place.lng}:null;
   mGeoSource=mGeo?'manual':null; // 編輯既有的站時，座標視為已確定，不被自動定位覆蓋
   $('#momentTitle').textContent=m?'編輯這一站':'新增一站';
@@ -1087,7 +1120,13 @@ async function saveMoment(){
   const id=editingMoment?editingMoment.id:uid();
   doc.moments[id]={id,time:$('#mTime').value||'',text,place,
     ts:editingMoment?editingMoment.ts:now(),updatedAt:now(),by:settings.name};
+  for(const ph of mPending){ // sheet 裡選的照片直接掛上這一站
+    const pid=uid();
+    await idbPut('blobs',{id:pid,buf:await ph.blob.arrayBuffer(),type:'image/jpeg',uploaded:false});
+    doc.photos[pid]={id:pid,caption:'',ts:now(),updatedAt:now(),by:settings.name,w:ph.w,h:ph.h,momentId:id};
+  }
   await saveDoc(doc);
+  clearMPending();
   hideOverlay('#momentSheet');
   renderAll();
 }
@@ -1178,9 +1217,19 @@ function bind(){
   });
   $('#addMomentBtn').onclick=()=>openMomentSheet(null);
   $('#mSave').onclick=saveMoment;
-  $('#mCancel').onclick=()=>hideOverlay('#momentSheet');
+  $('#mCancel').onclick=()=>closeMomentSheet();
   $('#mDelete').onclick=deleteMoment;
-  $('#momentSheet .mask').onclick=()=>hideOverlay('#momentSheet');
+  $('#momentSheet .mask').onclick=()=>closeMomentSheet();
+  $('#mPhotoInput').addEventListener('change',async e=>{
+    const files=[...e.target.files]; e.target.value='';
+    for(const f of files){
+      try{
+        const {blob,w,h}=await compressImage(f);
+        mPending.push({blob,w,h,url:URL.createObjectURL(blob)});
+      }catch(err){console.error(err);toast('有一張照片處理失敗');}
+    }
+    renderMPhotos();
+  });
   $('#mGPS').onclick=()=>{
     if(!navigator.geolocation){toast('這個裝置不支援定位');return;}
     const seq=++geoSeq;
