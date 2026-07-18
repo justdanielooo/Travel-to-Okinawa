@@ -1,4 +1,4 @@
-const CACHE = 'okitrip-v7';
+const CACHE = 'okitrip-v8';
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './icon-180.png', './leaflet.js', './leaflet.css'];
 
 self.addEventListener('install', e => {

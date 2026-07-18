@@ -124,6 +124,12 @@ nav.bottom button.sel{color:var(--brand)}
 .viewer img{flex:1; object-fit:contain; min-height:0; width:100%}
 .viewer .vbar{display:flex; gap:10px; padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px)); align-items:center}
 .viewer .vcap{color:#fff; flex:1; font-size:14px}
+.vnav{
+  position:absolute; top:50%; transform:translateY(-50%); left:8px; z-index:2;
+  width:42px; height:60px; border:none; border-radius:12px;
+  background:rgba(255,255,255,.13); color:#fff; font-size:32px; line-height:1; cursor:pointer;
+}
+.vnav.vnext{left:auto; right:8px}
 .muted{color:var(--ink2); font-size:12px; line-height:1.6}
 .statusline{font-size:12px; color:var(--ink2); margin-top:8px; word-break:break-all}
 .empty{color:var(--ink2); font-size:13px; text-align:center; padding:14px 0}
@@ -359,7 +365,10 @@ body.vmode .viewerbadge{display:inline-block; font-size:11px; font-weight:400; b
 <!-- 照片檢視 -->
 <div class="viewer" id="viewer">
   <img id="viewerImg" alt="">
+  <button class="vnav" id="viewerPrev" aria-label="上一張">‹</button>
+  <button class="vnav vnext" id="viewerNext" aria-label="下一張">›</button>
   <div class="vbar">
+    <span id="viewerCount" style="color:#fff;opacity:.7;font-size:13px;flex:0 0 auto"></span>
     <div class="vcap" id="viewerCap"></div>
     <button class="btn small sec" id="viewerEditCap">改說明</button>
     <button class="btn small warn" id="viewerDel">刪除</button>
@@ -749,7 +758,7 @@ async function renderDay(){
   const grid=$('#dayPhotos'); grid.innerHTML='';
   const phs=Object.values(doc.photos).filter(p=>!p.deleted&&!p.momentId).sort((a,b)=>a.ts-b.ts);
   $('#dayPhotoCount').textContent=phs.length?phs.length+' 張':'';
-  for(const p of phs)grid.appendChild(photoCell(p,doc));
+  for(const p of phs)grid.appendChild(photoCell(p,doc,phs));
   if(settings.mode!=='viewer'){
     const add=document.createElement('div');
     add.className='ph addph'; add.textContent='＋';
@@ -790,7 +799,7 @@ function momentCard(m,doc,phs){
     const img=document.createElement('img'); img.loading='lazy'; img.alt=p.caption||'';
     d.appendChild(img);
     photoURL(p.id).then(u=>{if(u)img.src=u;});
-    d.onclick=()=>openViewer(p,doc);
+    d.onclick=()=>openViewer(p,doc,phs);
     pwrap.appendChild(d);
   }
   el.querySelector('[data-act="photo"]').onclick=()=>{const i=$('#photoInput');i._date=doc.date;i._momentId=m.id;i.click();};
@@ -838,13 +847,13 @@ async function renderComments(){
   }
   if(!$('#cmtName').value)$('#cmtName').value=settings.name||'';
 }
-function photoCell(p,doc){
+function photoCell(p,doc,list){
   const el=document.createElement('div'); el.className='ph';
   const img=document.createElement('img'); img.loading='lazy'; img.alt=p.caption||'';
   el.appendChild(img);
   photoURL(p.id).then(u=>{if(u)img.src=u;else el.insertAdjacentHTML('beforeend','<div class="pending">未同步</div>');});
   idbGet('blobs',p.id).then(b=>{if(b&&!b.uploaded)el.insertAdjacentHTML('beforeend','<div class="pending">待上傳</div>');});
-  el.onclick=()=>openViewer(p,doc);
+  el.onclick=()=>openViewer(p,doc,list);
   return el;
 }
 const toTWD=e=>e.currency==='JPY'?e.amount*settings.rate:e.amount;
@@ -904,7 +913,7 @@ async function renderAlbum(){
     wrap.appendChild(lbl);
     const card=document.createElement('div');card.className='card';
     const grid=document.createElement('div');grid.className='photogrid';
-    phs.forEach(p=>grid.appendChild(photoCell(p,doc)));
+    phs.forEach(p=>grid.appendChild(photoCell(p,doc,phs)));
     card.appendChild(grid); wrap.appendChild(card);
   }
   if(!wrap.children.length)wrap.innerHTML='<div class="empty">還沒有照片，到「今日」頁按＋加入</div>';
@@ -1081,11 +1090,31 @@ async function deleteMoment(){
 
 /* ---------- 照片檢視器 ---------- */
 let viewing=null;
-async function openViewer(p,doc){
-  viewing={p,doc};
+async function showViewerAt(idx){
+  const {list,doc}=viewing;
+  idx=Math.max(0,Math.min(list.length-1,idx));
+  viewing.idx=idx; viewing.p=list[idx];
+  const p=viewing.p;
+  $('#viewerCount').textContent=list.length>1?`${idx+1} / ${list.length}`:'';
   $('#viewerCap').textContent=p.caption||`Day ${dayNo(doc.date)} ${fmtDate(doc.date)}`;
+  $('#viewerPrev').style.visibility=idx>0?'visible':'hidden';
+  $('#viewerNext').style.visibility=idx<list.length-1?'visible':'hidden';
   $('#viewerImg').src=await photoURL(p.id)||'';
+  if(list[idx+1])photoURL(list[idx+1].id); // 預先載入前後張，滑起來不卡
+  if(list[idx-1])photoURL(list[idx-1].id);
+}
+async function openViewer(p,doc,list){
+  list=(list&&list.length)?[...list]:[p];
+  let idx=list.findIndex(x=>x.id===p.id); if(idx<0)idx=0;
+  viewing={p,doc,list,idx};
   $('#viewer').classList.add('show');
+  await showViewerAt(idx);
+}
+function viewerNav(d){
+  if(!viewing)return;
+  const ni=viewing.idx+d;
+  if(ni<0||ni>=viewing.list.length)return;
+  showViewerAt(ni);
 }
 
 /* ---------- 匯出／匯入 ---------- */
@@ -1156,21 +1185,50 @@ function bind(){
   $('#expDelete').onclick=deleteExp;
   $('#expSheet .mask').onclick=()=>$('#expSheet').classList.remove('show');
   $('#viewerClose').onclick=()=>$('#viewer').classList.remove('show');
+  $('#viewerPrev').onclick=()=>viewerNav(-1);
+  $('#viewerNext').onclick=()=>viewerNav(1);
+  // 點圖片左右 1/3 區域也能翻頁
+  $('#viewerImg').addEventListener('click',e=>{
+    const w=window.innerWidth;
+    if(e.clientX<w/3)viewerNav(-1);
+    else if(e.clientX>w*2/3)viewerNav(1);
+  });
+  // 左右滑動翻頁
+  let vtX=null,vtY=null;
+  const vEl=$('#viewer');
+  vEl.addEventListener('touchstart',e=>{vtX=e.touches[0].clientX;vtY=e.touches[0].clientY;},{passive:true});
+  vEl.addEventListener('touchend',e=>{
+    if(vtX===null)return;
+    const dx=e.changedTouches[0].clientX-vtX, dy=e.changedTouches[0].clientY-vtY;
+    vtX=null;
+    if(Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)*1.5)viewerNav(dx<0?1:-1);
+  },{passive:true});
+  // 桌機鍵盤：方向鍵翻頁、Esc 關閉
+  document.addEventListener('keydown',e=>{
+    if(!$('#viewer').classList.contains('show'))return;
+    if(e.key==='ArrowLeft')viewerNav(-1);
+    else if(e.key==='ArrowRight')viewerNav(1);
+    else if(e.key==='Escape')$('#viewer').classList.remove('show');
+  });
   $('#viewerDel').onclick=async()=>{
     if(!viewing)return;
     if(!confirm('確定刪除這張照片？'))return;
-    const {p,doc}=viewing;
+    const {p,doc,list,idx}=viewing;
     doc.photos[p.id]={...doc.photos[p.id],deleted:true,updatedAt:now()};
     await saveDoc(doc); await idbDel('blobs',p.id);
-    $('#viewer').classList.remove('show'); renderAll();
+    list.splice(idx,1);
+    if(!list.length)$('#viewer').classList.remove('show');
+    else await showViewerAt(Math.min(idx,list.length-1)); // 刪除後直接看下一張
+    renderAll();
   };
   $('#viewerEditCap').onclick=async()=>{
     if(!viewing)return;
     const t=prompt('照片說明',viewing.p.caption||''); if(t===null)return;
     const {p,doc}=viewing;
     doc.photos[p.id]={...doc.photos[p.id],caption:t,updatedAt:now()};
+    viewing.p=doc.photos[p.id]; viewing.list[viewing.idx]=viewing.p;
     await saveDoc(doc);
-    $('#viewerCap').textContent=t;
+    $('#viewerCap').textContent=t||`Day ${dayNo(doc.date)} ${fmtDate(doc.date)}`;
   };
   $('#saveBasic').onclick=()=>{
     settings.name=$('#setName').value.trim();
