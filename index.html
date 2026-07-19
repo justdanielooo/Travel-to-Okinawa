@@ -168,6 +168,7 @@ body.vmode #addMomentBtn,
 body.vmode .tlacts,
 body.vmode .addph,
 body.vmode #dayExpCard,
+body.vmode #todoCard,
 body.vmode #journal,
 body.vmode #dayPhotoHint,
 body.vmode #viewerDel,
@@ -176,6 +177,17 @@ body.vmode #viewerEditCap{display:none !important}
 body.vmode #journalRead{display:block}
 .viewerbadge{display:none}
 body.vmode .viewerbadge{display:inline-block; font-size:11px; font-weight:400; background:rgba(255,255,255,.25); border-radius:8px; padding:2px 8px}
+/* 待辦 */
+.todo{display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid var(--line)}
+.todo:last-child{border-bottom:none}
+.todo .cb{width:23px; height:23px; border-radius:7px; border:2px solid var(--brand); flex:0 0 auto; display:flex; align-items:center; justify-content:center; color:#fff; font-size:14px; cursor:pointer; background:transparent; padding:0}
+.todo.done .cb{background:var(--brand)}
+.todo .tt{flex:1; font-size:14px; word-break:break-word}
+.todo.done .tt{text-decoration:line-through; color:var(--ink2)}
+.todo .carr{font-size:11px; color:var(--accent); flex:0 0 auto}
+.todo .del{border:none; background:none; color:var(--ink2); font-size:15px; cursor:pointer; padding:2px 4px}
+.todoadd{display:flex; gap:8px; margin-top:10px}
+.todoadd input{flex:1; border:1px solid var(--line); border-radius:10px; padding:10px; font:inherit; font-size:15px; background:var(--bg); color:var(--ink)}
 /* 留言 */
 .cmt{padding:10px 0; border-bottom:1px solid var(--line)}
 .cmt:last-child{border-bottom:none}
@@ -218,6 +230,14 @@ body.vmode .viewerbadge{display:inline-block; font-size:11px; font-weight:400; b
       <h2>💴 今日花費 <span class="mini" id="dayExpTotal"></span></h2>
       <div id="dayExpenses"></div>
       <div style="margin-top:10px"><button class="btn" id="addExpBtn">＋ 記一筆</button></div>
+    </div>
+    <div class="card" id="todoCard">
+      <h2>✅ 待辦清單 <span class="mini" id="todoCount"></span></h2>
+      <div id="todoList"></div>
+      <div class="todoadd">
+        <input id="todoInput" placeholder="例如：買防曬乳、退稅單記得拿" maxlength="200">
+        <button class="btn" id="todoAdd">新增</button>
+      </div>
     </div>
     <div class="card" id="commentsCard" style="display:none">
       <h2>💬 家人留言 <span class="mini" id="cmtCount"></span></h2>
@@ -427,11 +447,12 @@ const idbAll=s=>new Promise((res,rej)=>{const r=tx(s,'readonly').getAll();r.onsu
 /* ---------- 資料模型 ---------- */
 // day doc: {date, journal:{text,updatedAt,updatedBy}, moments:{id:{...}}, expenses:{id:{...}}, photos:{id:{...}}, dirty, sha}
 const docs=new Map();
-function blankDoc(date){return {date,journal:{text:'',updatedAt:0,updatedBy:''},moments:{},expenses:{},photos:{},dirty:false,sha:null};}
+function blankDoc(date){return {date,journal:{text:'',updatedAt:0,updatedBy:''},moments:{},todos:{},expenses:{},photos:{},dirty:false,sha:null};}
 async function getDoc(date){
   if(docs.has(date))return docs.get(date);
   const d=(await idbGet('days',date))||blankDoc(date);
   if(!d.moments)d.moments={}; // 舊資料相容
+  if(!d.todos)d.todos={};
   docs.set(date,d); return d;
 }
 async function saveDoc(d,markDirty=true){
@@ -474,7 +495,7 @@ function mergeDocs(local,remote){
   const out=blankDoc(local.date);
   out.journal=(remote.journal&&remote.journal.updatedAt>(local.journal?.updatedAt||0))?remote.journal:(local.journal||out.journal);
   for(const src of [remote,local]){ // local 後蓋，之後再比 updatedAt
-    for(const key of ['expenses','photos','moments']){
+    for(const key of ['expenses','photos','moments','todos']){
       for(const id in (src[key]||{})){
         const cur=out[key][id], cand=src[key][id];
         if(!cur||cand.updatedAt>cur.updatedAt)out[key][id]=cand;
@@ -483,7 +504,7 @@ function mergeDocs(local,remote){
   }
   return out;
 }
-const docPayload=d=>JSON.stringify({date:d.date,journal:d.journal,moments:d.moments||{},expenses:d.expenses,photos:d.photos},null,1);
+const docPayload=d=>JSON.stringify({date:d.date,journal:d.journal,moments:d.moments||{},todos:d.todos||{},expenses:d.expenses,photos:d.photos},null,1);
 
 /* ---------- GitHub 同步 ---------- */
 const GH={
@@ -769,7 +790,8 @@ async function renderDay(){
     add.onclick=()=>{const i=$('#photoInput');i._date=currentDate;i._momentId=null;i.click();};
     grid.appendChild(add);
   }
-  // 家人留言
+  // 待辦與家人留言
+  await renderTodos();
   await renderComments();
   // expenses
   const list=Object.values(doc.expenses).filter(e=>!e.deleted).sort((a,b)=>a.ts-b.ts);
@@ -833,6 +855,61 @@ function renderTrailMap(moments){
   setTimeout(()=>trailMap.invalidateSize(),60);
   $('#trailHint').textContent=pts.length<moments.length
     ?'只有含座標的站會出現在地圖上（用「📍打卡目前位置」或貼含座標的地圖連結）':'';
+}
+/* ---------- 待辦清單（未完成自動帶到今天，純顯示邏輯、不搬移資料） ---------- */
+async function renderTodos(){
+  if(settings.mode==='viewer')return; // 卡片已隱藏
+  const today=dstr(new Date());
+  const doc=await getDoc(currentDate);
+  const items=Object.values(doc.todos||{}).filter(t=>!t.deleted).map(t=>({t,home:currentDate}));
+  if(currentDate===today){
+    for(const d of tripDates()){
+      if(d>=today)break;
+      const dd=await getDoc(d);
+      for(const t of Object.values(dd.todos||{})){
+        if(t.deleted)continue;
+        if(!t.done||t.doneDate===today)items.push({t,home:d}); // 帶過來的：未完成，或今天才勾掉的
+      }
+    }
+  }
+  items.sort((a,b)=>(a.t.done?1:0)-(b.t.done?1:0)||a.t.ts-b.t.ts);
+  const box=$('#todoList'); box.innerHTML='';
+  if(!items.length)box.innerHTML='<div class="empty">還沒有待辦事項</div>';
+  const doneN=items.filter(x=>x.t.done).length;
+  $('#todoCount').textContent=items.length?`${doneN} / ${items.length} 完成`:'';
+  for(const {t,home} of items){
+    const el=document.createElement('div'); el.className='todo'+(t.done?' done':'');
+    el.innerHTML=`<button class="cb">${t.done?'✓':''}</button>
+      ${home!==currentDate?`<span class="carr">${home.slice(5).replace('-','/')}</span>`:''}
+      <span class="tt">${escapeHtml(t.text)}</span>
+      <button class="del" aria-label="刪除">✕</button>`;
+    el.querySelector('.cb').onclick=()=>toggleTodo(home,t.id);
+    el.querySelector('.del').onclick=async()=>{
+      const dd=await getDoc(home);
+      dd.todos[t.id]={...dd.todos[t.id],deleted:true,updatedAt:now()};
+      await saveDoc(dd); renderTodos();
+    };
+    box.appendChild(el);
+  }
+}
+async function toggleTodo(home,id){
+  if(settings.mode==='viewer')return;
+  const dd=await getDoc(home);
+  const t=dd.todos[id]; if(!t)return;
+  const done=!t.done;
+  dd.todos[id]={...t,done,doneDate:done?dstr(new Date()):null,updatedAt:now(),by:settings.name};
+  await saveDoc(dd); renderTodos();
+}
+async function addTodo(){
+  if(settings.mode==='viewer')return;
+  const text=$('#todoInput').value.trim();
+  if(!text)return;
+  const doc=await getDoc(currentDate);
+  const id=uid();
+  doc.todos[id]={id,text,done:false,doneDate:null,ts:now(),updatedAt:now(),by:settings.name};
+  await saveDoc(doc);
+  $('#todoInput').value='';
+  renderTodos();
 }
 async function renderComments(){
   const card=$('#commentsCard');
@@ -1177,7 +1254,7 @@ async function exportJSON(){
   const days=await idbAll('days');
   const data={app:'okitrip',exportedAt:new Date().toISOString(),
     settings:{...settings,token:undefined},
-    days:days.map(d=>({date:d.date,journal:d.journal,moments:d.moments||{},expenses:d.expenses,photos:d.photos}))};
+    days:days.map(d=>({date:d.date,journal:d.journal,moments:d.moments||{},todos:d.todos||{},expenses:d.expenses,photos:d.photos}))};
   const blob=new Blob([JSON.stringify(data,null,1)],{type:'application/json'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob); a.download='okinawa-backup-'+dstr(new Date())+'.json';
@@ -1354,6 +1431,8 @@ function bind(){
       startDate:settings.startDate,days:settings.days},
       '來看我們的沖繩旅行日記，也可以留言給我們 🌺');
   };
+  $('#todoAdd').onclick=addTodo;
+  $('#todoInput').addEventListener('keydown',e=>{if(e.key==='Enter')addTodo();});
   $('#cmtSend').onclick=async()=>{
     const name=$('#cmtName').value.trim(), text=$('#cmtText').value.trim();
     if(!name){toast('請填暱稱');return;}
