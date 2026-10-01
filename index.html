@@ -160,11 +160,59 @@ nav.bottom button.sel{color:var(--brand)}
 #trailMap{height:230px; border-radius:10px; overflow:hidden; z-index:0}
 .numpin{background:var(--brand); color:#fff; border-radius:50%; width:24px; height:24px; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.4)}
 .sheet textarea{width:100%; min-height:84px; border:1px solid var(--line); border-radius:10px; padding:10px; font:inherit; font-size:15px; background:var(--bg); color:var(--ink); resize:vertical}
+/* 計畫卡 / 打卡 */
+.tlcard.plan{background:transparent; border:1px dashed rgba(91,122,126,.42)}
+.tlcard.plan:before{background:var(--bg); border:2px solid rgba(91,122,126,.5)}
+.tlcard.plan .tltext{color:var(--ink2)}
+.tlcard.plan .placechip{background:transparent; border-style:dashed; color:var(--ink2)}
+.tlcard.plan .placechip span:first-child{opacity:.6}
+.tlcard.overdue{border-color:rgba(245,158,11,.6)}
+.tlcard.overdue:before{border-color:var(--accent)}
+.tlcard.overdue .tltext{color:var(--ink)}
+.tlcard.overdue .od{color:var(--accent); font-weight:600}
+.tlcard .planTime{font-size:11px; color:var(--ink2)}
+.tlacts .btn.small{padding:10px 14px; font-size:14px; border-radius:10px; min-height:44px}
+.planacts{display:flex; gap:8px; margin-top:12px; flex-wrap:wrap}
+.planacts .btn{min-height:44px}
+.tlgone{position:relative; padding:8px 0; margin-bottom:10px; display:flex; align-items:center; gap:8px}
+.tlgone:before{content:''; position:absolute; left:-17px; top:14px; width:6px; height:6px; border-radius:50%; background:#cfdde0}
+.tlgone .t{font-size:13px; color:#9db8bc; text-decoration:line-through; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.tlgone .tag{font-size:11px; color:#9db8bc; flex:0 0 auto}
+.nowline{position:relative; display:flex; align-items:center; gap:8px; margin:2px 0 14px}
+.nowline:before{content:''; position:absolute; left:-19px; top:3px; width:10px; height:10px; border-radius:50%; background:var(--accent); border:2px solid var(--bg)}
+.nowline b{font-size:11px; color:var(--accent); letter-spacing:.04em}
+.nowline i{flex:1; height:1px; background:rgba(245,158,11,.3)}
+.tlgap{position:relative; display:flex; align-items:center; gap:8px; width:100%; background:none; border:none; padding:0; margin:0 0 10px; cursor:pointer; min-height:40px; text-align:left; font:inherit}
+.tlgap:before{content:'+'; position:absolute; left:-22px; top:50%; transform:translateY(-50%); width:16px; height:16px; border-radius:50%; border:1px dashed rgba(91,122,126,.5); background:var(--bg); display:flex; align-items:center; justify-content:center; font-size:11px; line-height:1; color:var(--ink2)}
+.tlgap span{font-size:12px; color:#9db8bc}
+#fabCapture{
+  position:fixed; right:14px; bottom:calc(var(--nav-h) + 14px); z-index:25;
+  display:inline-flex; align-items:center; justify-content:center; gap:7px;
+  border:none; border-radius:28px; width:128px; height:56px; padding:0;
+  font:inherit; font-size:15px; font-weight:600; background:var(--brand); color:#fff;
+  cursor:pointer; overflow:hidden; box-shadow:0 4px 16px rgba(14,116,144,.34);
+  transition:width .24s cubic-bezier(.2,.7,.3,1), gap .24s cubic-bezier(.2,.7,.3,1);
+}
+#fabCapture .ic{font-size:20px; line-height:1; flex:0 0 auto}
+#fabCapture .lb{max-width:80px; opacity:1; overflow:hidden; white-space:nowrap; transition:max-width .24s cubic-bezier(.2,.7,.3,1), opacity .16s ease}
+#fabCapture.mini{width:56px; gap:0}
+#fabCapture.mini .lb{max-width:0; opacity:0}
+#bindChip{display:none; align-items:center; gap:10px; border:1px dashed rgba(245,158,11,.6); border-radius:12px; padding:10px 12px; margin-bottom:12px}
+#bindChip.show{display:flex}
+#bindChip .bt{flex:1; font-size:13px; line-height:1.5}
+#bindChip .bs{font-size:11px; color:var(--ink2); margin-top:2px}
+#bindChip button{border:none; border-radius:9px; padding:9px 16px; font:inherit; font-size:14px; font-weight:600; background:var(--accent); color:#fff; cursor:pointer; min-height:44px; flex:0 0 auto}
+#bindChip.bound{border-style:solid; border-color:var(--line); background:var(--bg)}
+#bindChip.bound .bt{color:var(--brand)}
+#bindChip.bound button{background:none; color:var(--ink2); font-weight:400; font-size:12px; padding:6px 4px; min-height:0}
 /* 訪客（親友）模式 */
 body.vmode nav.bottom button[data-tab="exp"],
 body.vmode nav.bottom button[data-tab="overview"],
 body.vmode .owner-only,
 body.vmode #addMomentBtn,
+body.vmode #fabCapture,
+body.vmode .planacts,
+body.vmode .tlgap,
 body.vmode .tlacts,
 body.vmode .addph,
 body.vmode #dayExpCard,
@@ -214,7 +262,6 @@ body.vmode .viewerbadge{display:inline-block; font-size:11px; font-weight:400; b
       <p class="muted" id="trailHint" style="margin:8px 0 0"></p>
     </div>
     <div class="tl" id="timeline"></div>
-    <button class="btn" id="addMomentBtn" style="width:100%">＋ 新增一站</button>
     <div style="height:14px"></div>
     <div class="card">
       <h2>📝 今日總結 <span class="mini" id="journalMeta"></span></h2>
@@ -334,6 +381,8 @@ body.vmode .viewerbadge{display:inline-block; font-size:11px; font-weight:400; b
   </section>
 </main>
 
+<button id="fabCapture"><span class="ic">＋</span><span class="lb">記一筆</span></button>
+
 <nav class="bottom">
   <button data-tab="day" class="sel"><span class="ic">📓</span><span class="lb">今日</span></button>
   <button data-tab="exp"><span class="ic">💴</span><span class="lb">花費</span></button>
@@ -370,6 +419,10 @@ body.vmode .viewerbadge{display:inline-block; font-size:11px; font-weight:400; b
   <div class="mask"></div>
   <div class="sheet">
     <h3 id="momentTitle">新增一站</h3>
+    <div id="bindChip">
+      <div class="bt"><span id="bindText"></span><div class="bs" id="bindSub"></div></div>
+      <button id="bindBtn"></button>
+    </div>
     <div class="field" style="max-width:140px"><label>時間</label><input id="mTime" type="time"></div>
     <div class="field"><label>發生了什麼</label><textarea id="mText" placeholder="這一站的見聞、心情…"></textarea></div>
     <div class="field"><label>照片（選填）</label><div class="tlphotos" id="mPhotos"></div></div>
@@ -770,8 +823,45 @@ async function renderDay(){
     .sort((a,b)=>(a.time||'').localeCompare(b.time||'')||(a.ts-b.ts));
   const phByMoment={};
   Object.values(doc.photos).filter(p=>!p.deleted&&p.momentId).forEach(p=>{(phByMoment[p.momentId]??=[]).push(p);});
-  for(const m of moments)tl.appendChild(momentCard(m,doc,(phByMoment[m.id]||[]).sort((a,b)=>a.ts-b.ts)));
-  if(!moments.length)tl.innerHTML='<div class="empty">'+(settings.mode==='viewer'?'今天還沒有記錄，晚點再來看看 🐾':'按下方「＋新增一站」開始記錄今天的軌跡 🐾')+'</div>';
+  const today=localToday(), isToday=currentDate===today, nowT=nowHM();
+  const past=currentDate<today;
+  // 今天：以「現在」為界，上半是已發生、下半是還沒到
+  const above=isToday?moments.filter(m=>(m.time||'')<=nowT):(past?moments:[]);
+  const below=isToday?moments.filter(m=>(m.time||'')>nowT):(past?[]:moments);
+  const gone=m=>isPlan(m)&&(m.planState==='skipped'||m.planState==='moved');
+
+  const gap=(t,label,kind)=>{
+    const b=document.createElement('button');
+    b.className='tlgap'; b.innerHTML=`<span>${label}</span>`;
+    b.onclick=()=>openMomentSheet(null,{at:t,kind});
+    return b;
+  };
+  const row=m=>{
+    if(gone(m)){
+      const d=document.createElement('div'); d.className='tlgone';
+      d.innerHTML=`<span class="t">${escapeHtml(m.time||'')} ${escapeHtml(m.text||m.place&&m.place.name||'')}</span>`
+        +`<span class="tag">${m.planState==='moved'?'已移到隔天':'沒去成'}</span>`;
+      return d;
+    }
+    return momentCard(m,doc,(phByMoment[m.id]||[]).sort((a,b)=>a.ts-b.ts));
+  };
+  const zone=(list,label,kind,tailTo)=>{
+    list.forEach((m,i)=>{
+      tl.appendChild(gap(midTime(i>0?list[i-1].time:null,m.time),label,kind));
+      tl.appendChild(row(m));
+    });
+    tl.appendChild(gap(list.length?midTime(list[list.length-1].time,tailTo):(tailTo||nowT),label,kind));
+  };
+  if(isToday){
+    zone(above,'補記一筆','record',nowT);
+    const nl=document.createElement('div'); nl.className='nowline';
+    nl.innerHTML=`<b>現在 ${nowT}</b><i></i>`;
+    tl.appendChild(nl);
+    zone(below,'插入一站','plan',null);
+  }else{
+    zone(moments,past?'補記一筆':'插入一站',past?'record':'plan',null);
+  }
+  if(!moments.length&&settings.mode==='viewer')tl.innerHTML='<div class="empty">今天還沒有記錄，晚點再來看看 🐾</div>';
   renderWxBar();
   renderTrailMap(moments);
   // 今日總結
@@ -801,6 +891,30 @@ async function renderDay(){
   const tot=list.reduce((s,e)=>s+toTWD(e),0);
   $('#dayExpTotal').textContent=list.length?('合計 '+fmtTWD(tot)):'';
 }
+function localToday(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function nowHM(){return new Date().toTimeString().slice(0,5);}
+function isPlan(m){return m.status==='plan';}
+function planOpen(m){return isPlan(m)&&(!m.planState||m.planState==='open');}
+function hm2min(t){const a=String(t||'').split(':');return (+a[0]||0)*60+(+a[1]||0);}
+function min2hm(n){n=Math.max(0,Math.min(24*60-1,n));return String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');}
+function midTime(a,b){if(a==null)return min2hm(hm2min(b)-30);if(b==null)return min2hm(hm2min(a)+60);return min2hm(Math.floor((hm2min(a)+hm2min(b))/2));}
+
+async function skipPlan(m,state){
+  if(settings.mode==='viewer')return;
+  const doc=await getDoc(currentDate);
+  const t=doc.moments[m.id]; if(!t)return;
+  t.planState=state; t.updatedAt=now();
+  if(state==='moved'){
+    const nd=addDays(currentDate,1);
+    const ndoc=await getDoc(nd);
+    const nid=uid();
+    ndoc.moments[nid]={...t,id:nid,planState:'open',ts:now(),updatedAt:now()};
+    await saveDoc(ndoc);
+  }
+  await saveDoc(doc); await renderDay();
+  toast(state==='moved'?'已移到隔天':'已標記沒去成');
+}
+
 function momentCard(m,doc,phs){
   const el=document.createElement('div'); el.className='tlcard';
   const place=m.place&&(m.place.name||m.place.url)?m.place:null;
@@ -810,14 +924,29 @@ function momentCard(m,doc,phs){
     if(!/^https?:\/\//i.test(url))url='https://'+url;
     placeHtml=`<a class="placechip" href="${escapeHtml(url)}" target="_blank" rel="noopener">📍<span>${escapeHtml(place.name||'地圖位置')}</span></a>`;
   }
-  el.innerHTML=`<div class="tltime"><span>🕐 ${escapeHtml(m.time||'—')}</span><span>${escapeHtml(m.by||'')}</span></div>
+  const today=localToday(), isToday=doc.date===today;
+  const overdue=planOpen(m)&&isToday&&(m.time||'')<=nowHM();
+  if(isPlan(m))el.className='tlcard plan'+(overdue?' overdue':'');
+  const right=isPlan(m)
+    ? (overdue?'<span class="od">還沒打卡？</span>':'計畫')
+    : escapeHtml(m.by||'');
+  const planTimeHtml=(!isPlan(m)&&m.planTime&&m.planTime!==m.time)
+    ? `<span class="planTime">預計 ${escapeHtml(m.planTime)}</span>` : '';
+  const acts=isPlan(m)
+    ? `<div class="planacts">
+         <button class="btn" data-act="arrive">✓ ${overdue?'抵達':'抵達這一站'}</button>
+         <button class="btn sec" data-act="skip">跳過</button>
+         ${overdue?'<button class="btn sec" data-act="move">移到明天</button>':''}
+       </div>`
+    : `<div class="tlacts">
+         <button class="btn small sec" data-act="photo">📷 加照片</button>
+         <button class="btn small sec" data-act="edit">✏️ ${m.text?'編輯':'寫點什麼'}</button>
+       </div>`;
+  el.innerHTML=`<div class="tltime"><span>🕐 ${escapeHtml(m.time||'—')} ${planTimeHtml}</span><span>${right}</span></div>
     ${m.text?`<div class="tltext">${escapeHtml(m.text)}</div>`:''}
     ${placeHtml}
     <div class="tlphotos"></div>
-    <div class="tlacts">
-      <button class="btn small sec" data-act="photo">📷 加照片</button>
-      <button class="btn small sec" data-act="edit">✏️ 編輯</button>
-    </div>`;
+    ${acts}`;
   const pwrap=el.querySelector('.tlphotos');
   if(!phs.length)pwrap.remove();
   else for(const p of phs){
@@ -828,8 +957,13 @@ function momentCard(m,doc,phs){
     d.onclick=()=>openViewer(p,doc,phs);
     pwrap.appendChild(d);
   }
-  el.querySelector('[data-act="photo"]').onclick=()=>{const i=$('#photoInput');i._date=doc.date;i._momentId=m.id;i.click();};
-  el.querySelector('[data-act="edit"]').onclick=()=>openMomentSheet(m);
+  const on=(sel,fn)=>{const b=el.querySelector(sel); if(b)b.onclick=fn;};
+  on('[data-act="photo"]',()=>{const i=$('#photoInput');i._date=doc.date;i._momentId=m.id;i.click();});
+  on('[data-act="edit"]',()=>openMomentSheet(m));
+  on('[data-act="arrive"]',()=>openMomentSheet(m,{arrive:true}));
+  on('[data-act="skip"]',()=>skipPlan(m,'skipped'));
+  on('[data-act="move"]',()=>skipPlan(m,'moved'));
+  if(isPlan(m))el.onclick=e=>{if(!e.target.closest('button,a'))openMomentSheet(m);};
   return el;
 }
 let trailMap=null, trailLayer=null;
@@ -1162,21 +1296,55 @@ function autoLocate(){ // 開 sheet 時背景定位，打完字座標已就緒
   },()=>{if(seq===geoSeq&&!mGeo)$('#mGeoStatus').textContent='';},
   {enableHighAccuracy:true,timeout:8000,maximumAge:60000});
 }
-function openMomentSheet(m){
-  editingMoment=m||null;
+let sheetKind='record', sheetArrive=null, sheetBind=null;
+function setBindChip(plan,bound){
+  const c=$('#bindChip');
+  sheetBind=plan?plan.id:null;
+  if(!plan){c.className='';return;}
+  c.className='show'+(bound?' bound':'');
+  $('#bindText').textContent=bound?`已掛到「${plan.place&&plan.place.name||plan.text||'這一站'}」`:`這是「${plan.place&&plan.place.name||plan.text||'這一站'}」嗎？`;
+  $('#bindSub').textContent=bound?`預計 ${plan.time||''}`:'掛上去就會變成這一站的紀錄';
+  $('#bindBtn').textContent=bound?'取消':'是';
+  $('#bindBtn').onclick=()=>{
+    if(bound){sheetArrive=null;setBindChip(plan,false);}
+    else{sheetArrive=plan;setBindChip(plan,true);
+      if(plan.place){$('#mPlaceName').value=plan.place.name||'';$('#mPlaceUrl').value=plan.place.url||'';}
+      if(!$('#mText').value.trim())$('#mText').value=plan.text||'';}
+  };
+}
+async function nearestOpenPlan(at){
+  const doc=await getDoc(currentDate);
+  let best=null;
+  for(const m of Object.values(doc.moments||{})){
+    if(m.deleted||!planOpen(m))continue;
+    const d=Math.abs(hm2min(m.time)-hm2min(at));
+    if(d<=90&&(!best||d<best.d))best={m,d};
+  }
+  return best?best.m:null;
+}
+function openMomentSheet(m,opt){
+  opt=opt||{};
+  sheetArrive=null; sheetBind=null; setBindChip(null);
+  sheetKind=opt.kind||((m&&isPlan(m)&&!opt.arrive)?'plan':'record');
+  editingMoment=(m&&!opt.arrive)?m:null;
   clearMPending(); renderMPhotos();
   mGeo=(m&&m.place&&m.place.lat!=null)?{lat:m.place.lat,lng:m.place.lng}:null;
   mGeoSource=mGeo?'manual':null; // 編輯既有的站時，座標視為已確定，不被自動定位覆蓋
-  $('#momentTitle').textContent=m?'編輯這一站':'新增一站';
-  $('#mTime').value=m?(m.time||''):new Date().toTimeString().slice(0,5);
+  $('#momentTitle').textContent=opt.arrive?'抵達這一站'
+    :(editingMoment?(isPlan(editingMoment)?'編輯這一站計畫':'編輯這一站')
+    :(sheetKind==='plan'?'加一站計畫':(opt.at&&opt.at!==nowHM()?'補記一筆':'記一筆')));
+  if(opt.arrive){sheetArrive=m;}
+  $('#mTime').value=opt.arrive?nowHM():(m?(m.time||''):(opt.at||nowHM()));
   $('#mText').value=m?(m.text||''):'';
   $('#mPlaceName').value=(m&&m.place)?(m.place.name||''):'';
   $('#mPlaceUrl').value=(m&&m.place)?(m.place.url||''):'';
+  if(opt.arrive)setBindChip(m,true);
+  else if(!m&&sheetKind==='record')nearestOpenPlan($('#mTime').value).then(pl=>{if(pl&&!editingMoment)setBindChip(pl,false);});
   showGeoStatus();
-  $('#mDelete').style.display=m?'':'none';
+  $('#mDelete').style.display=editingMoment?'':'none';
   showOverlay('#momentSheet');
-  if(!m){
-    if(settings.mode!=='viewer')autoLocate();
+  if(!editingMoment){
+    if(settings.mode!=='viewer'&&sheetKind==='record'&&!opt.at)autoLocate();
     setTimeout(()=>$('#mText').focus(),100);
   }
 }
@@ -1194,9 +1362,22 @@ async function saveMoment(){
   if(url&&!/^https?:\/\//i.test(url))url='https://'+url;
   const place=(name||url||lat!=null)?{name,url:url||(lat!=null?`https://www.google.com/maps?q=${lat},${lng}`:''),lat,lng}:null;
   const doc=await getDoc(currentDate);
-  const id=editingMoment?editingMoment.id:uid();
-  doc.moments[id]={id,time:$('#mTime').value||'',text,place,
-    ts:editingMoment?editingMoment.ts:now(),updatedAt:now(),by:settings.name};
+  const target=sheetArrive||editingMoment;
+  const id=target?target.id:uid();
+  const base=target?doc.moments[id]:null;
+  const rec={id,time:$('#mTime').value||'',text,place,
+    ts:base?base.ts:now(),updatedAt:now(),by:settings.name};
+  if(sheetArrive){                       // 打卡：計畫卡就地變成紀錄卡
+    rec.status='done';
+    rec.planTime=(base&&base.time)||sheetArrive.time||'';
+    delete rec.planState;
+  }else if(sheetKind==='plan'){
+    rec.status='plan'; rec.planState=(base&&base.planState)||'open';
+  }else if(base&&base.status){
+    rec.status=base.status; if(base.planState)rec.planState=base.planState;
+    if(base.planTime)rec.planTime=base.planTime;
+  }
+  doc.moments[id]=rec;
   for(const ph of mPending){ // sheet 裡選的照片直接掛上這一站
     const pid=uid();
     await idbPut('blobs',{id:pid,buf:await ph.blob.arrayBuffer(),type:'image/jpeg',uploaded:false});
@@ -1292,7 +1473,13 @@ function bind(){
     if(e.target.files.length)addPhotos([...e.target.files],e.target._date||currentDate,e.target._momentId||null);
     e.target._momentId=null; e.target.value='';
   });
-  $('#addMomentBtn').onclick=()=>openMomentSheet(null);
+  $('#fabCapture').onclick=()=>openMomentSheet(null,{kind:'record'});
+  let fabT=null;
+  addEventListener('scroll',()=>{
+    const f=$('#fabCapture'); if(!f)return;
+    f.classList.add('mini'); clearTimeout(fabT);
+    fabT=setTimeout(()=>f.classList.remove('mini'),400);
+  },{passive:true});
   $('#mSave').onclick=saveMoment;
   $('#mCancel').onclick=()=>closeMomentSheet();
   $('#mDelete').onclick=deleteMoment;
