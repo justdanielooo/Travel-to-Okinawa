@@ -1926,7 +1926,12 @@ function applySetupLink(){
     if(cfg.commentsToken!==undefined)settings.commentsToken=cfg.commentsToken;
     saveSettings();
     history.replaceState(null,'',location.pathname+location.search);
-    setTimeout(()=>{toast('✅ 設定完成！');askWho();},400);
+    setTimeout(async()=>{
+      toast('✅ 設定完成！');
+      if(settings.token&&settings.repo)await pullTrip();   // 名單與日期一律以 repo 為準
+      initCurrentDate(); renderTripTitle(); renderSettings(); renderAll();
+      askWho();
+    },400);
   }catch(e){console.error('setup link error',e);}
 }
 window.addEventListener('hashchange',()=>{if(location.hash.startsWith('#setup='))location.reload();});
@@ -1940,7 +1945,12 @@ window.addEventListener('hashchange',()=>{if(location.hash.startsWith('#setup=')
   renderAll();
   refreshWeather();
   // 名字沒填就一直問：空名字會讓日記歸屬與分帳同時失準
-  if(!settings.name&&settings.mode!=='viewer'&&!location.hash.startsWith('#setup='))setTimeout(()=>askWho(),600);
+  if(!settings.name&&settings.mode!=='viewer'&&!location.hash.startsWith('#setup='))setTimeout(async()=>{
+    if(settings.token&&settings.repo&&!memberList().length){
+      await pullTrip(); initCurrentDate(); renderTripTitle(); renderSettings(); renderAll();
+    }
+    askWho();
+  },600);
   if(settings.token)syncAll(true);
   if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(()=>{});
 })();
