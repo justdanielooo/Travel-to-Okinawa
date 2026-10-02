@@ -258,7 +258,7 @@ body.vmode .viewerbadge{display:inline-block; font-size:11px; font-weight:400; b
 <body>
 
 <header class="app">
-  <h1>🌺 宮古島之旅 <span id="syncDot" title="同步狀態"></span> <span class="viewerbadge">親友瀏覽</span></h1>
+  <h1>🌺 <span id="tripTitle">宮古島之旅</span> <span id="syncDot" title="同步狀態"></span> <span class="viewerbadge">親友瀏覽</span></h1>
   <div class="sub" id="tripSub"></div>
   <div class="daychips" id="dayChips"></div>
 </header>
@@ -348,7 +348,9 @@ body.vmode .viewerbadge{display:inline-block; font-size:11px; font-weight:400; b
       <div class="field"><label>你的名字（日記與記帳會顯示）</label>
         <div class="catchips" id="setNameChips" style="margin-bottom:8px"></div>
         <input id="setName" placeholder="例如：Daniel"></div>
-      <div class="field owner-only"><label>同行成員（逗號分隔）— 只填真的去的人，分攤除以這個人數</label><input id="setMembers" placeholder="例如：Daniel, 太太, 小美, 阿明, Jennifer"></div>
+      <div class="field owner-only"><label>旅程名稱（顯示在最上方）</label><input id="setTripName" placeholder="例如：宮古島之旅"></div>
+      <div class="field owner-only"><label>同行成員（逗號分隔）— 只填真的去的人，分攤除以這個人數</label><input id="setMembers" placeholder="例如：太太, 小美, 阿明, Jennifer"></div>
+      <p class="muted owner-only" style="margin:-4px 0 12px">旅程名稱、成員、日期、匯率是全隊共用的，存檔後其他人下次同步就會跟著更新，不用重新設定。</p>
       <div class="rowflex owner-only">
         <div class="field"><label>出發日</label><input id="setStart" type="date"></div>
         <div class="field"><label>天數</label><input id="setDays" type="number" min="1" max="60"></div>
@@ -514,7 +516,8 @@ const catName=id=>(CATS.find(c=>c[0]===id)||CATS[5])[2];
 
 /* ---------- 設定 ---------- */
 const DEFAULTS={name:'',rate:0.205,token:'',repo:'justdanielooo/okinawa-data',startDate:'2026-07-16',days:20,
-  mode:'owner',viewerToken:'',commentsRepo:'justdanielooo/okinawa-comments',commentsToken:'',members:''};
+  mode:'owner',viewerToken:'',commentsRepo:'justdanielooo/okinawa-comments',commentsToken:'',members:'',
+  tripName:'宮古島之旅',tripSha:null};
 let settings={...DEFAULTS,...JSON.parse(localStorage.getItem('okitrip.settings')||'{}')};
 function saveSettings(){localStorage.setItem('okitrip.settings',JSON.stringify(settings));}
 
@@ -655,11 +658,45 @@ function setSyncUI(state,msg){
   $('#syncDot').className=state;
   if(msg!==undefined)$('#syncStatus').textContent=msg;
 }
+const TRIP_KEYS=['tripName','startDate','days','rate','members'];
+// 全隊共用的設定放在資料 repo，改一次所有人下次同步就跟上；各自的名字與 token 不在裡面
+async function pullTrip(){
+  try{
+    const rf=await GH.getFile('trip.json');
+    if(!rf)return false;
+    const t=JSON.parse(rf.text);
+    let changed=false;
+    for(const k of TRIP_KEYS){
+      if(t[k]!==undefined&&String(t[k])!==String(settings[k])){settings[k]=t[k];changed=true;}
+    }
+    settings.tripSha=rf.sha;
+    if(changed||!settings.tripSha)saveSettings();
+    return changed;
+  }catch(e){console.warn('trip.json pull failed',e);return false;}
+}
+async function pushTrip(){
+  if(settings.mode==='viewer'||!settings.token||!settings.repo)return;
+  const body={}; TRIP_KEYS.forEach(k=>body[k]=settings[k]);
+  body.updatedAt=now(); body.updatedBy=settings.name||'';
+  const text=JSON.stringify(body,null,1);
+  try{
+    const rf=await GH.getFile('trip.json');
+    if(rf&&rf.text===text){settings.tripSha=rf.sha;saveSettings();return;}
+    settings.tripSha=await GH.putFile('trip.json',b64encodeText(text),rf?rf.sha:null,
+      `update trip settings by ${settings.name||'user'}`);
+    saveSettings();
+  }catch(e){toast('旅程設定同步失敗：'+(e.message||e));}
+}
+function renderTripTitle(){
+  const el=$('#tripTitle'); if(el)el.textContent=settings.tripName||'旅行日誌';
+  document.title=(settings.tripName||'旅行日誌')+' · 旅行日誌';
+}
 async function syncAll(silent){
   if(!settings.token||!settings.repo){if(!silent){toast('請先到「設定」填入 GitHub token');}return;}
   if(!navigator.onLine){setSyncUI('err','目前離線，恢復連線後會自動同步');return;}
   if(syncing){syncQueued=true;return;}
   syncing=true; setSyncUI('busy','同步中…');
+  if(await pullTrip()){renderTripTitle();renderSettings();renderAll();} // 旅程設定以 repo 為準
   const canWrite=settings.mode!=='viewer'; // 訪客只拉不推日記資料
   try{
     // 1. 集合：本地所有天 + 遠端 days/ 目錄
@@ -1371,6 +1408,7 @@ function renderNameChips(){
 function renderSettings(){
   $('#setName').value=settings.name; $('#setRate').value=settings.rate;
   renderNameChips();
+  $('#setTripName').value=settings.tripName||'';
   $('#setMembers').value=settings.members||'';
   $('#setStart').value=settings.startDate; $('#setDays').value=settings.days;
   $('#setToken').value=settings.token; $('#setRepo').value=settings.repo;
@@ -1775,13 +1813,15 @@ function bind(){
     await saveDoc(doc);
     $('#viewerCap').textContent=t||`Day ${dayNo(doc.date)} ${fmtDate(doc.date)}`;
   };
-  $('#saveBasic').onclick=()=>{
+  $('#saveBasic').onclick=async()=>{
     settings.name=$('#setName').value.trim();
+    settings.tripName=$('#setTripName').value.trim()||DEFAULTS.tripName;
     settings.rate=parseFloat($('#setRate').value)||DEFAULTS.rate;
     settings.members=$('#setMembers').value.trim();
     settings.startDate=$('#setStart').value||DEFAULTS.startDate;
     settings.days=Math.max(1,Math.min(60,parseInt($('#setDays').value)||20));
-    saveSettings(); initCurrentDate(); renderAll(); toast('已儲存');
+    saveSettings(); initCurrentDate(); renderTripTitle(); renderAll(); toast('已儲存');
+    await pushTrip();   // 推到 repo，其他人下次同步就跟上
   };
   $('#saveSync').onclick=async()=>{
     settings.token=$('#setToken').value.trim();
@@ -1813,7 +1853,7 @@ function bind(){
   }
   $('#shareSetup').onclick=()=>{
     if(!settings.token){toast('請先在上方貼 token 並按「儲存並測試連線」');return;}
-    shareLink({mode:'owner',token:settings.token,repo:settings.repo,rate:settings.rate,startDate:settings.startDate,days:settings.days,members:settings.members,
+    shareLink({mode:'owner',token:settings.token,repo:settings.repo,rate:settings.rate,startDate:settings.startDate,days:settings.days,members:settings.members,tripName:settings.tripName,
       viewerToken:settings.viewerToken,commentsRepo:settings.commentsRepo,commentsToken:settings.commentsToken},
       '點開這個連結就能一起記錄我們的沖繩旅程 🌺');
   };
@@ -1880,6 +1920,7 @@ function applySetupLink(){
     if(cfg.days)settings.days=cfg.days;
     settings.mode=cfg.mode==='viewer'?'viewer':'owner';
     if(cfg.members!==undefined)settings.members=cfg.members;
+    if(cfg.tripName!==undefined)settings.tripName=cfg.tripName;
     if(cfg.viewerToken!==undefined)settings.viewerToken=cfg.viewerToken;
     if(cfg.commentsRepo)settings.commentsRepo=cfg.commentsRepo;
     if(cfg.commentsToken!==undefined)settings.commentsToken=cfg.commentsToken;
@@ -1895,6 +1936,7 @@ window.addEventListener('hashchange',()=>{if(location.hash.startsWith('#setup=')
   await openDB();
   initCurrentDate();
   bind();
+  renderTripTitle();
   renderAll();
   refreshWeather();
   // 名字沒填就一直問：空名字會讓日記歸屬與分帳同時失準
