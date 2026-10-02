@@ -6,11 +6,11 @@
 <meta name="theme-color" content="#0e7490">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="沖繩之旅">
+<meta name="apple-mobile-web-app-title" content="宮古島之旅">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
-<title>沖繩之旅 · 旅行日誌</title>
+<title>宮古島之旅 · 旅行日誌</title>
 <link rel="stylesheet" href="leaflet.css">
 <script src="leaflet.js" defer></script>
 <style>
@@ -30,9 +30,13 @@ body{
 }
 header.app{
   position:sticky; top:0; z-index:20;
-  background:linear-gradient(135deg,var(--brand),var(--brand2));
+  background:
+    linear-gradient(180deg,rgba(6,42,54,.34) 0%,rgba(6,42,54,.62) 48%,rgba(6,42,54,.88) 100%),
+    url(header.jpg) 22% 8%/170% auto no-repeat,
+    linear-gradient(135deg,var(--brand),var(--brand2));
   color:#fff; padding:calc(10px + env(safe-area-inset-top,0px)) 16px 0 16px;
 }
+header.app h1,header.app .sub{text-shadow:0 1px 3px rgba(0,0,0,.45)}
 header.app h1{margin:0; font-size:19px; display:flex; align-items:center; gap:8px}
 header.app .sub{font-size:12px; opacity:.85; margin:2px 0 8px}
 #syncDot{width:8px;height:8px;border-radius:50%;background:#94a3b8;display:inline-block}
@@ -254,7 +258,7 @@ body.vmode .viewerbadge{display:inline-block; font-size:11px; font-weight:400; b
 <body>
 
 <header class="app">
-  <h1>🌺 沖繩之旅 <span id="syncDot" title="同步狀態"></span> <span class="viewerbadge">親友瀏覽</span></h1>
+  <h1>🌺 宮古島之旅 <span id="syncDot" title="同步狀態"></span> <span class="viewerbadge">親友瀏覽</span></h1>
   <div class="sub" id="tripSub"></div>
   <div class="daychips" id="dayChips"></div>
 </header>
@@ -341,7 +345,9 @@ body.vmode .viewerbadge{display:inline-block; font-size:11px; font-weight:400; b
   <section class="tab" id="tab-settings">
     <div class="card">
       <h2>👤 基本設定</h2>
-      <div class="field"><label>你的名字（記帳會顯示付款人）</label><input id="setName" placeholder="例如：Daniel"></div>
+      <div class="field"><label>你的名字（日記與記帳會顯示）</label>
+        <div class="catchips" id="setNameChips" style="margin-bottom:8px"></div>
+        <input id="setName" placeholder="例如：Daniel"></div>
       <div class="field owner-only"><label>同行成員（逗號分隔）— 只填真的去的人，分攤除以這個人數</label><input id="setMembers" placeholder="例如：Daniel, 太太, 小美, 阿明, Jennifer"></div>
       <div class="rowflex owner-only">
         <div class="field"><label>出發日</label><input id="setStart" type="date"></div>
@@ -451,6 +457,21 @@ body.vmode .viewerbadge{display:inline-block; font-size:11px; font-weight:400; b
       <button class="btn sec" id="mCancel">取消</button>
       <button class="btn warn" id="mDelete" style="display:none">刪除</button>
       <button class="btn" id="mSave">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 你是哪一位 -->
+<div class="sheetwrap" id="whoSheet">
+  <div class="mask"></div>
+  <div class="sheet">
+    <h3>你是哪一位？</h3>
+    <p class="muted" style="margin:0 0 14px">選一個名字，之後你的日記和記帳都會記在這個名字下。選錯了可以到「設定」改。</p>
+    <div id="whoList"></div>
+    <button class="btn sec" id="whoNotListed" style="width:100%; margin-top:4px">我不在名單上</button>
+    <div id="whoOther" style="display:none">
+      <div class="field"><label>你的名字</label><input id="whoName" placeholder="輸入名字"></div>
+      <button class="btn" id="whoSave" style="width:100%">確定</button>
     </div>
   </div>
 </div>
@@ -1309,8 +1330,47 @@ function renderPerPerson(paidBy,tot){
     </div>`;
   }).join('');
 }
+function askWho(force){
+  if(settings.mode==='viewer')return;
+  if(settings.name&&!force)return;
+  const names=memberList().filter(n=>n!=='(未命名)');
+  const box=$('#whoList'); box.innerHTML='';
+  const hasList=names.length>0;
+  $('#whoNotListed').style.display=hasList?'':'none';
+  $('#whoOther').style.display=hasList?'none':'';
+  for(const n of names){
+    const b=document.createElement('button');
+    b.className='btn sec';
+    b.style.cssText='width:100%; margin-bottom:8px; min-height:52px; font-size:16px';
+    b.textContent=n;
+    b.onclick=()=>pickWho(n);
+    box.appendChild(b);
+  }
+  $('#whoName').value=settings.name||'';
+  showOverlay('#whoSheet');
+}
+function pickWho(n){
+  n=String(n||'').trim(); if(!n){toast('請選一個名字');return;}
+  settings.name=n; saveSettings();
+  hideOverlay('#whoSheet');
+  renderSettings(); renderAll();
+  toast('你好，'+n+'！');
+}
+function renderNameChips(){
+  const box=$('#setNameChips'); if(!box)return;
+  const names=memberList().filter(n=>n!=='(未命名)');
+  box.innerHTML=''; box.style.display=names.length?'':'none';
+  const cur=String(settings.name||'').trim().toLowerCase();
+  for(const n of names){
+    const b=document.createElement('button');
+    b.type='button'; b.className='c'+(n.toLowerCase()===cur?' sel':''); b.textContent=n;
+    b.onclick=()=>{$('#setName').value=n; renderNameChips();};
+    box.appendChild(b);
+  }
+}
 function renderSettings(){
   $('#setName').value=settings.name; $('#setRate').value=settings.rate;
+  renderNameChips();
   $('#setMembers').value=settings.members||'';
   $('#setStart').value=settings.startDate; $('#setDays').value=settings.days;
   $('#setToken').value=settings.token; $('#setRepo').value=settings.repo;
@@ -1620,6 +1680,9 @@ function bind(){
     if(settings.mode==='viewer'||editingJournal)return;
     localStorage.setItem(jDraftKey(currentDate),$('#journal').value); // 還沒送出也不會不見
   });
+  $('#whoNotListed').onclick=()=>{$('#whoList').innerHTML='';$('#whoNotListed').style.display='none';$('#whoOther').style.display='';$('#whoName').focus();};
+  $('#whoSave').onclick=()=>pickWho($('#whoName').value);
+  $('#setNameAsk')&&($('#setNameAsk').onclick=()=>askWho(true));
   $('#jSend').onclick=sendJournal;
   $('#jCancel').onclick=cancelEditJournal;
   $('#photoInput').addEventListener('change',e=>{
@@ -1742,7 +1805,7 @@ function bind(){
   async function shareLink(cfg,shareText){
     const link=location.origin+location.pathname+'#setup='+b64encodeText(JSON.stringify(cfg));
     if(navigator.share){
-      try{await navigator.share({title:'沖繩之旅 旅行日誌',text:shareText,url:link});return;}
+      try{await navigator.share({title:'宮古島之旅 旅行日誌',text:shareText,url:link});return;}
       catch(e){if(e.name==='AbortError')return;}
     }
     try{await navigator.clipboard.writeText(link);toast('連結已複製，用 LINE 傳出去吧！');}
@@ -1822,11 +1885,7 @@ function applySetupLink(){
     if(cfg.commentsToken!==undefined)settings.commentsToken=cfg.commentsToken;
     saveSettings();
     history.replaceState(null,'',location.pathname+location.search);
-    if(!settings.name){
-      const n=prompt('歡迎！請輸入你的名字（記帳會顯示付款人）');
-      if(n&&n.trim()){settings.name=n.trim();saveSettings();}
-    }
-    setTimeout(()=>toast('✅ 設定完成！可以開始記錄了'),400);
+    setTimeout(()=>{toast('✅ 設定完成！');askWho();},400);
   }catch(e){console.error('setup link error',e);}
 }
 window.addEventListener('hashchange',()=>{if(location.hash.startsWith('#setup='))location.reload();});
@@ -1838,6 +1897,8 @@ window.addEventListener('hashchange',()=>{if(location.hash.startsWith('#setup=')
   bind();
   renderAll();
   refreshWeather();
+  // 名字沒填就一直問：空名字會讓日記歸屬與分帳同時失準
+  if(!settings.name&&settings.mode!=='viewer'&&!location.hash.startsWith('#setup='))setTimeout(()=>askWho(),600);
   if(settings.token)syncAll(true);
   if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(()=>{});
 })();
