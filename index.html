@@ -160,6 +160,8 @@ nav.bottom button.sel{color:var(--brand)}
 #trailMap{height:230px; border-radius:10px; overflow:hidden; z-index:0}
 .numpin{background:var(--brand); color:#fff; border-radius:50%; width:24px; height:24px; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.4)}
 .sheet textarea{width:100%; min-height:84px; border:1px solid var(--line); border-radius:10px; padding:10px; font:inherit; font-size:15px; background:var(--bg); color:var(--ink); resize:vertical}
+.bal{font-size:12px; font-weight:600}
+.bal.plus{color:var(--ok)} .bal.minus{color:var(--danger)} .bal.zero{color:var(--ink2); font-weight:400}
 /* 計畫卡 / 打卡 */
 .tlcard.plan{background:transparent; border:1px dashed rgba(91,122,126,.42)}
 .tlcard.plan:before{background:var(--bg); border:2px solid rgba(91,122,126,.5)}
@@ -319,6 +321,7 @@ body.vmode .viewerbadge{display:inline-block; font-size:11px; font-weight:400; b
       <div class="totbox"><div class="n" id="ovPhotos">0</div><div class="l">照片張數</div></div>
       <div class="totbox"><div class="n" id="ovAvg">NT$0</div><div class="l">平均每日花費</div></div>
     </div>
+    <div class="card"><h2>👥 每人花費 <span class="mini" id="ovSplitSub"></span></h2><div id="ovPerPerson"></div></div>
     <div class="card"><h2>📅 每日花費</h2><div id="ovPerDay"></div></div>
     <div class="card"><h2>✍️ 日記進度</h2><div id="ovJournal"></div></div>
   </section>
@@ -328,6 +331,7 @@ body.vmode .viewerbadge{display:inline-block; font-size:11px; font-weight:400; b
     <div class="card">
       <h2>👤 基本設定</h2>
       <div class="field"><label>你的名字（記帳會顯示付款人）</label><input id="setName" placeholder="例如：Daniel"></div>
+      <div class="field owner-only"><label>同行成員（逗號分隔，用於記帳分攤）</label><input id="setMembers" placeholder="例如：Daniel, 太太, 小美, 阿明, Jennifer"></div>
       <div class="rowflex owner-only">
         <div class="field"><label>出發日</label><input id="setStart" type="date"></div>
         <div class="field"><label>天數</label><input id="setDays" type="number" min="1" max="60"></div>
@@ -404,7 +408,9 @@ body.vmode .viewerbadge{display:inline-block; font-size:11px; font-weight:400; b
     <div class="field"><label>說明（選填）</label><input id="expNote" placeholder="例如：暖暮拉麵"></div>
     <div class="rowflex">
       <div class="field"><label>日期</label><input id="expDate" type="date"></div>
-      <div class="field"><label>付款人</label><input id="expPayer"></div>
+      <div class="field"><label>付款人</label>
+        <div class="catchips" id="expPayerChips" style="margin-bottom:8px"></div>
+        <input id="expPayer" placeholder="或直接輸入"></div>
     </div>
     <div class="rowflex">
       <button class="btn sec" id="expCancel">取消</button>
@@ -476,7 +482,7 @@ const catName=id=>(CATS.find(c=>c[0]===id)||CATS[5])[2];
 
 /* ---------- 設定 ---------- */
 const DEFAULTS={name:'',rate:0.205,token:'',repo:'justdanielooo/okinawa-data',startDate:'2026-07-16',days:20,
-  mode:'owner',viewerToken:'',commentsRepo:'justdanielooo/okinawa-comments',commentsToken:''};
+  mode:'owner',viewerToken:'',commentsRepo:'justdanielooo/okinawa-comments',commentsToken:'',members:''};
 let settings={...DEFAULTS,...JSON.parse(localStorage.getItem('okitrip.settings')||'{}')};
 function saveSettings(){localStorage.setItem('okitrip.settings',JSON.stringify(settings));}
 
@@ -1072,6 +1078,15 @@ function photoCell(p,doc,list){
   return el;
 }
 const toTWD=e=>e.currency==='JPY'?e.amount*settings.rate:e.amount;
+// 成員名單：設定優先，沒設就用資料裡出現過的付款人
+function memberList(extra){
+  const out=[], seen=new Set();
+  const add=n=>{n=String(n||'').trim(); if(!n)return; const k=n.toLowerCase();
+    if(!seen.has(k)){seen.add(k); out.push(n);}};
+  String(settings.members||'').split(/[,，、;；\n]/).forEach(add);
+  (extra||[]).forEach(add);
+  return out;
+}
 function expRow(e){
   const el=document.createElement('div'); el.className='exp-row';
   const amt=e.currency==='JPY'?fmtJPY(e.amount):fmtTWD(e.amount);
@@ -1133,14 +1148,32 @@ async function renderAlbum(){
   }
   if(!wrap.children.length)wrap.innerHTML='<div class="empty">還沒有照片，到「今日」頁按＋加入</div>';
 }
+function renderPayerChips(){
+  const box=$('#expPayerChips'); if(!box)return;
+  const names=memberList();
+  box.innerHTML='';
+  if(!names.length){box.style.display='none';return;}
+  box.style.display='';
+  const cur=$('#expPayer').value.trim().toLowerCase();
+  for(const n of names){
+    const b=document.createElement('button');
+    b.type='button'; b.className='c'+(n.toLowerCase()===cur?' sel':''); b.textContent=n;
+    b.onclick=()=>{$('#expPayer').value=n; renderPayerChips();};
+    box.appendChild(b);
+  }
+}
 async function renderOverview(){
-  let photos=0,tot=0,daysWithJournal=0; const per=[];
+  let photos=0,tot=0,daysWithJournal=0; const per=[], paidBy={};
   for(const d of tripDates()){
     const doc=await getDoc(d);
     const p=Object.values(doc.photos).filter(x=>!x.deleted).length;
     const t=Object.values(doc.expenses).filter(x=>!x.deleted).reduce((s,e)=>s+toTWD(e),0);
     photos+=p; tot+=t;
     if((doc.journal.text||'').trim()||Object.values(doc.moments||{}).some(m=>!m.deleted))daysWithJournal++;
+    for(const e of Object.values(doc.expenses).filter(x=>!x.deleted)){
+      const who=(e.payer||'').trim()||'（未填）';
+      paidBy[who]=(paidBy[who]||0)+toTWD(e);
+    }
     per.push([d,t]);
   }
   $('#ovDays').textContent=settings.days;
@@ -1151,11 +1184,35 @@ async function renderOverview(){
   $('#ovPerDay').innerHTML=per.map(([d,t])=>
     `<div class="catline"><div class="row"><span>Day ${dayNo(d)} ${fmtDate(d)}</span><b>${t?fmtTWD(t):'—'}</b></div>
      <div class="bar"><i style="width:${Math.round(t/max*100)}%"></i></div></div>`).join('');
+  renderPerPerson(paidBy,tot);
   $('#ovJournal').innerHTML=`<div class="muted">已記錄 ${daysWithJournal} / ${settings.days} 天</div>
     <div class="bar" style="margin-top:8px"><i style="width:${Math.round(daysWithJournal/settings.days*100)}%"></i></div>`;
 }
+function renderPerPerson(paidBy,tot){
+  const box=$('#ovPerPerson'); if(!box)return;
+  // 名單＝設定的成員 ＋ 任何真的付過錢的人（名字打錯也不會讓錢消失）
+  const names=memberList(Object.keys(paidBy));
+  if(!names.length||!tot){
+    box.innerHTML='<div class="empty">還沒有記帳</div>';
+    $('#ovSplitSub').textContent=''; return;
+  }
+  const share=tot/names.length;
+  $('#ovSplitSub').textContent=`${names.length} 人均分，每人 ${fmtTWD(share)}`;
+  const max=Math.max(1,...names.map(n=>paidBy[n]||0));
+  box.innerHTML=names.map(n=>{
+    const paid=paidBy[n]||0, bal=paid-share;
+    const cls=Math.abs(bal)<1?'zero':(bal>0?'plus':'minus');
+    const txt=Math.abs(bal)<1?'剛好':(bal>0?'應收 '+fmtTWD(bal):'應付 '+fmtTWD(-bal));
+    return `<div class="catline">
+      <div class="row"><span>${escapeHtml(n)}</span><b>${fmtTWD(paid)}</b></div>
+      <div class="bar"><i style="width:${Math.round(paid/max*100)}%"></i></div>
+      <div class="row" style="margin-top:3px"><span class="bal ${cls}">${txt}</span></div>
+    </div>`;
+  }).join('');
+}
 function renderSettings(){
   $('#setName').value=settings.name; $('#setRate').value=settings.rate;
+  $('#setMembers').value=settings.members||'';
   $('#setStart').value=settings.startDate; $('#setDays').value=settings.days;
   $('#setToken').value=settings.token; $('#setRepo').value=settings.repo;
   $('#setViewerToken').value=settings.viewerToken; $('#setCmtRepo').value=settings.commentsRepo;
@@ -1172,6 +1229,7 @@ function switchTab(t){
   currentTab=t;
   $$('nav.bottom button').forEach(b=>b.classList.toggle('sel',b.dataset.tab===t));
   $$('section.tab').forEach(s=>s.classList.toggle('show',s.id==='tab-'+t));
+  const fab=$('#fabCapture'); if(fab)fab.style.display=(t==='day')?'':'none';  // 只在「今日」浮出來
   renderAll();
   window.scrollTo(0,0);
 }
@@ -1186,6 +1244,7 @@ function openExpSheet(date,exp){
   $('#expNote').value=exp?exp.note:'';
   $('#expDate').value=exp?exp.date:date;
   $('#expPayer').value=exp?(exp.payer||''):settings.name;
+  renderPayerChips();
   $('#expDelete').style.display=exp?'':'none';
   const cats=$('#expCats'); cats.innerHTML='';
   CATS.forEach(([id,ic,nm])=>{
@@ -1562,6 +1621,7 @@ function bind(){
   $('#saveBasic').onclick=()=>{
     settings.name=$('#setName').value.trim();
     settings.rate=parseFloat($('#setRate').value)||DEFAULTS.rate;
+    settings.members=$('#setMembers').value.trim();
     settings.startDate=$('#setStart').value||DEFAULTS.startDate;
     settings.days=Math.max(1,Math.min(60,parseInt($('#setDays').value)||20));
     saveSettings(); initCurrentDate(); renderAll(); toast('已儲存');
@@ -1596,7 +1656,7 @@ function bind(){
   }
   $('#shareSetup').onclick=()=>{
     if(!settings.token){toast('請先在上方貼 token 並按「儲存並測試連線」');return;}
-    shareLink({mode:'owner',token:settings.token,repo:settings.repo,rate:settings.rate,startDate:settings.startDate,days:settings.days,
+    shareLink({mode:'owner',token:settings.token,repo:settings.repo,rate:settings.rate,startDate:settings.startDate,days:settings.days,members:settings.members,
       viewerToken:settings.viewerToken,commentsRepo:settings.commentsRepo,commentsToken:settings.commentsToken},
       '點開這個連結就能一起記錄我們的沖繩旅程 🌺');
   };
@@ -1662,6 +1722,7 @@ function applySetupLink(){
     if(cfg.startDate)settings.startDate=cfg.startDate;
     if(cfg.days)settings.days=cfg.days;
     settings.mode=cfg.mode==='viewer'?'viewer':'owner';
+    if(cfg.members!==undefined)settings.members=cfg.members;
     if(cfg.viewerToken!==undefined)settings.viewerToken=cfg.viewerToken;
     if(cfg.commentsRepo)settings.commentsRepo=cfg.commentsRepo;
     if(cfg.commentsToken!==undefined)settings.commentsToken=cfg.commentsToken;
