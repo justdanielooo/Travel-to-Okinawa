@@ -374,7 +374,7 @@ body.vmode .viewerbadge{display:inline-block; font-size:11px; font-weight:400; b
     </div>
     <div class="card owner-only">
       <h2>👨‍👩‍👧 開放家人瀏覽＋留言</h2>
-      <p class="muted">需要一個放留言的 private repo（預設 <b>okinawa-data</b> 同帳號下的 <b>okinawa-comments</b>）＋兩組 token，建立方式見 README。家人點連結後只能看日記與相簿、可以留言，看不到花費與總覽。</p>
+      <p class="muted">家人點連結後只能看日記、軌跡與相簿，看不到花費與總覽。<br><b>資料唯讀 Token</b>（對資料倉庫 Contents = Read-only）是必填；<b>留言 Token</b> 選填，想讓家人留言才需要——另建一個 private repo 放留言，給它 Contents = Read and write 的 token。</p>
       <div class="field"><label>資料唯讀 Token（Contents: Read-only，家人看日記用）</label><input id="setViewerToken" type="password" autocomplete="off" placeholder="github_pat_…"></div>
       <div class="field"><label>留言 Repo（owner/name）</label><input id="setCmtRepo"></div>
       <div class="field"><label>留言 Token（Contents: Read and write）</label><input id="setCmtToken" type="password" autocomplete="off" placeholder="github_pat_…"></div>
