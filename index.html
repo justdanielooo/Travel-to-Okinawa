@@ -331,7 +331,7 @@ body.vmode .viewerbadge{display:inline-block; font-size:11px; font-weight:400; b
     <div class="card">
       <h2>👤 基本設定</h2>
       <div class="field"><label>你的名字（記帳會顯示付款人）</label><input id="setName" placeholder="例如：Daniel"></div>
-      <div class="field owner-only"><label>同行成員（逗號分隔，用於記帳分攤）</label><input id="setMembers" placeholder="例如：Daniel, 太太, 小美, 阿明, Jennifer"></div>
+      <div class="field owner-only"><label>同行成員（逗號分隔）— 只填真的去的人，分攤除以這個人數</label><input id="setMembers" placeholder="例如：Daniel, 太太, 小美, 阿明, Jennifer"></div>
       <div class="rowflex owner-only">
         <div class="field"><label>出發日</label><input id="setStart" type="date"></div>
         <div class="field"><label>天數</label><input id="setDays" type="number" min="1" max="60"></div>
@@ -1190,23 +1190,30 @@ async function renderOverview(){
 }
 function renderPerPerson(paidBy,tot){
   const box=$('#ovPerPerson'); if(!box)return;
-  // 名單＝設定的成員 ＋ 任何真的付過錢的人（名字打錯也不會讓錢消失）
-  const names=memberList(Object.keys(paidBy));
-  if(!names.length||!tot){
+  const roster=memberList();                       // 設定裡的同行成員＝要分攤的人
+  const low=n=>String(n).trim().toLowerCase();
+  // 付了錢但不在名單上的人（例如沒同行、只是先代刷的人）：收得回全額，不吃一份分攤
+  const extras=Object.keys(paidBy).filter(n=>!roster.some(r=>low(r)===low(n)));
+  const sharers=roster.length?roster:extras;        // 沒設名單就退回「付過錢的人均分」
+  const others=roster.length?extras:[];
+  if(!sharers.length||!tot){
     box.innerHTML='<div class="empty">還沒有記帳</div>';
     $('#ovSplitSub').textContent=''; return;
   }
-  const share=tot/names.length;
-  $('#ovSplitSub').textContent=`${names.length} 人均分，每人 ${fmtTWD(share)}`;
-  const max=Math.max(1,...names.map(n=>paidBy[n]||0));
-  box.innerHTML=names.map(n=>{
-    const paid=paidBy[n]||0, bal=paid-share;
+  const shared=others.reduce((s,n)=>s+(paidBy[n]||0),0);
+  const share=tot/sharers.length;
+  $('#ovSplitSub').textContent=`${sharers.length} 人均分，每人 ${fmtTWD(share)}`;
+  const all=[...sharers.map(n=>[n,true]),...others.map(n=>[n,false])];
+  const max=Math.max(1,...all.map(([n])=>paidBy[n]||0));
+  box.innerHTML=all.map(([n,isSharer])=>{
+    const paid=paidBy[n]||0, bal=paid-(isSharer?share:0);
     const cls=Math.abs(bal)<1?'zero':(bal>0?'plus':'minus');
     const txt=Math.abs(bal)<1?'剛好':(bal>0?'應收 '+fmtTWD(bal):'應付 '+fmtTWD(-bal));
+    const tag=isSharer?'':'<span class="bal zero" style="margin-left:6px">未同行，不分攤</span>';
     return `<div class="catline">
       <div class="row"><span>${escapeHtml(n)}</span><b>${fmtTWD(paid)}</b></div>
       <div class="bar"><i style="width:${Math.round(paid/max*100)}%"></i></div>
-      <div class="row" style="margin-top:3px"><span class="bal ${cls}">${txt}</span></div>
+      <div class="row" style="margin-top:3px"><span class="bal ${cls}">${txt}</span>${tag}</div>
     </div>`;
   }).join('');
 }
