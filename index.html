@@ -222,11 +222,14 @@ body.vmode #todoCard,
 body.vmode #dayPhotoHint,
 body.vmode #viewerDel,
 body.vmode #viewerEditCap{display:none !important}
-.jname{font-size:12px; color:var(--ink2); font-weight:600; margin-bottom:6px}
-.jentry{border-top:1px solid var(--line); padding-top:10px; margin-top:12px}
-.jentry .jh{font-size:12px; color:var(--ink2); display:flex; justify-content:space-between; gap:8px; margin-bottom:4px}
-.jentry .jb{font-size:15px; white-space:pre-wrap; line-height:1.6; word-break:break-word}
-body.vmode #jMine{display:none}
+.jentry{padding:10px 0; border-bottom:1px solid var(--line)}
+.jentry:last-child{border-bottom:none}
+.jentry .jh{font-size:12px; color:var(--ink2); display:flex; justify-content:space-between; gap:8px}
+.jentry .jb{font-size:15px; white-space:pre-wrap; line-height:1.6; word-break:break-word; margin-top:4px}
+.jentry.me{border-left:2px solid var(--brand2); padding-left:10px; margin-left:-12px}
+.jacts{display:flex; gap:8px; margin-top:8px}
+.jacts button{border:1px solid var(--line); background:var(--bg); color:var(--ink2); border-radius:8px; padding:7px 12px; font:inherit; font-size:12px; cursor:pointer; min-height:36px}
+body.vmode #jCompose{display:none}
 .viewerbadge{display:none}
 body.vmode .viewerbadge{display:inline-block; font-size:11px; font-weight:400; background:rgba(255,255,255,.25); border-radius:8px; padding:2px 8px}
 /* 待辦 */
@@ -268,12 +271,15 @@ body.vmode .viewerbadge{display:inline-block; font-size:11px; font-weight:400; b
     <div class="tl" id="timeline"></div>
     <div style="height:14px"></div>
     <div class="card">
-      <h2>📝 今日總結 <span class="mini" id="journalMeta"></span></h2>
-      <div id="jMine">
-        <div class="jname" id="jMyName"></div>
-        <textarea id="journal" placeholder="睡前寫兩句今天的總結…（選填）"></textarea>
+      <h2>📝 今日日記 <span class="mini" id="journalMeta"></span></h2>
+      <div id="jList"></div>
+      <div id="jCompose" style="margin-top:12px">
+        <textarea id="journal" placeholder="寫下今天的一段…"></textarea>
+        <div class="rowflex" style="margin-top:8px">
+          <button class="btn sec" id="jCancel" style="display:none">取消編輯</button>
+          <button class="btn" id="jSend">送出</button>
+        </div>
       </div>
-      <div id="jOthers"></div>
     </div>
     <div class="card">
       <h2>📷 更多照片 <span class="mini" id="dayPhotoCount"></span></h2>
@@ -563,12 +569,13 @@ function jEntries(doc){
   for(const k in (doc.journals||{})){
     const e=doc.journals[k];
     if(!e||e.deleted||!String(e.text||'').trim())continue;
-    out.push({key:k,name:e.name||k,text:e.text,updatedAt:e.updatedAt||0});
+    out.push({id:k,name:e.name||k,text:e.text,ts:e.ts||e.updatedAt||0,mine:jKey(e.name)===meKey()});
   }
+  // 舊格式（七月那趟的單篇）只讀不改，照樣顯示，但不給編輯／刪除
   const lg=doc.journal;
   if(lg&&String(lg.text||'').trim())
-    out.push({key:'__legacy',name:lg.updatedBy||'（舊紀錄）',text:lg.text,updatedAt:lg.updatedAt||0,legacy:true});
-  return out.sort((a,b)=>a.updatedAt-b.updatedAt);
+    out.push({id:'__legacy',name:lg.updatedBy||'（舊紀錄）',text:lg.text,ts:lg.updatedAt||0,legacy:true});
+  return out.sort((a,b)=>a.ts-b.ts);
 }
 
 /* ---------- 合併（兩人共用的核心） ---------- */
@@ -893,19 +900,7 @@ async function renderDay(){
   renderWxBar();
   renderTrailMap(moments);
   // 今日總結
-  const j=$('#journal'), me=meKey(), all=jEntries(doc), viewer=settings.mode==='viewer';
-  const mine=all.find(e=>e.key===me);
-  // 舊格式那篇若是我寫的、而我還沒有新格式的一篇 → 直接接手編輯，不另外列一塊
-  const legacyMine=!mine?all.find(e=>e.legacy&&jKey(e.name)===me):null;
-  if(document.activeElement!==j)j.value=((mine||legacyMine||{}).text)||'';
-  $('#jMyName').textContent=(settings.name||'我')+'的總結';
-  const others=viewer?all:all.filter(e=>e!==mine&&e!==legacyMine);
-  $('#jOthers').innerHTML=others.length?others.map(e=>
-    `<div class="jentry"><div class="jh"><span>${escapeHtml(e.name)}</span>`+
-    `<span>${e.updatedAt?new Date(e.updatedAt).toLocaleString():''}</span></div>`+
-    `<div class="jb">${escapeHtml(e.text)}</div></div>`).join('')
-    :(viewer?'<div class="empty">今天還沒有人寫總結 🐾</div>':'');
-  $('#journalMeta').textContent=all.length?`${all.length} 篇`:'';
+  renderJournals(doc);
   // 未分站照片
   const grid=$('#dayPhotos'); grid.innerHTML='';
   const phs=Object.values(doc.photos).filter(p=>!p.deleted&&!p.momentId).sort((a,b)=>a.ts-b.ts);
@@ -1098,6 +1093,72 @@ async function renderComments(){
     box.appendChild(el);
   }
   if(!$('#cmtName').value)$('#cmtName').value=settings.name||'';
+}
+let editingJournal=null;
+const jDraftKey=d=>'okitrip.jdraft.'+d;
+function renderJournals(doc){
+  const list=jEntries(doc), box=$('#jList');
+  $('#journalMeta').textContent=list.length?list.length+' 篇':'';
+  box.innerHTML='';
+  if(!list.length){
+    box.innerHTML='<div class="empty">'+(settings.mode==='viewer'?'今天還沒有人寫 🐾':'今天還沒有人寫，從下面開始吧 🐾')+'</div>';
+  }
+  for(const e of list){
+    const el=document.createElement('div');
+    el.className='jentry'+(e.mine?' me':'');
+    el.innerHTML=`<div class="jh"><span>${escapeHtml(e.name)}</span>`+
+      `<span>${e.ts?new Date(e.ts).toLocaleString():''}</span></div>`+
+      `<div class="jb">${escapeHtml(e.text)}</div>`+
+      ((e.mine&&settings.mode!=='viewer')?'<div class="jacts"><button data-a="edit">✏️ 編輯</button><button data-a="del">刪除</button></div>':'');
+    const eb=el.querySelector('[data-a="edit"]'), db=el.querySelector('[data-a="del"]');
+    if(eb)eb.onclick=()=>startEditJournal(e);
+    if(db)db.onclick=()=>deleteJournal(e);
+    box.appendChild(el);
+  }
+  if(!editingJournal){
+    const j=$('#journal');
+    if(document.activeElement!==j)j.value=localStorage.getItem(jDraftKey(doc.date))||'';
+  }
+}
+function startEditJournal(e){
+  editingJournal=e.id;
+  $('#journal').value=e.text;
+  $('#jSend').textContent='更新';
+  $('#jCancel').style.display='';
+  $('#journal').focus();
+}
+function cancelEditJournal(){
+  editingJournal=null;
+  $('#journal').value=''; $('#jSend').textContent='送出'; $('#jCancel').style.display='none';
+}
+async function deleteJournal(e){
+  if(settings.mode==='viewer'||e.legacy)return;
+  if(!confirm('刪除這一則日記？'))return;
+  const doc=await getDoc(currentDate);
+  if(doc.journals&&doc.journals[e.id]){
+    doc.journals[e.id]={...doc.journals[e.id],deleted:true,updatedAt:now()};
+    await saveDoc(doc);
+  }
+  if(editingJournal===e.id)cancelEditJournal();
+  renderJournals(doc);
+}
+async function sendJournal(){
+  if(settings.mode==='viewer')return;
+  const text=$('#journal').value.trim();
+  if(!text){toast('寫點什麼再送出吧');return;}
+  const doc=await getDoc(currentDate);
+  if(!doc.journals)doc.journals={};
+  if(editingJournal&&doc.journals[editingJournal]){
+    doc.journals[editingJournal]={...doc.journals[editingJournal],text,updatedAt:now()};
+  }else{
+    const id=uid();
+    doc.journals[id]={id,name:settings.name||'',text,ts:now(),updatedAt:now(),by:settings.name};
+  }
+  await saveDoc(doc);
+  localStorage.removeItem(jDraftKey(currentDate));
+  cancelEditJournal();
+  renderJournals(doc);
+  toast('已送出');
 }
 function photoCell(p,doc,list){
   const el=document.createElement('div'); el.className='ph';
@@ -1555,19 +1616,12 @@ async function importJSON(file){
 /* ---------- 事件 ---------- */
 function bind(){
   $$('nav.bottom button').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
-  let jTimer;
   $('#journal').addEventListener('input',()=>{
-    if(settings.mode==='viewer')return;
-    clearTimeout(jTimer);
-    jTimer=setTimeout(async()=>{
-      const doc=await getDoc(currentDate);
-      if(!doc.journals)doc.journals={};
-      const k=meKey();
-      doc.journals[k]={key:k,name:settings.name||'',text:$('#journal').value,updatedAt:now()};
-      await saveDoc(doc);
-      $('#journalMeta').textContent='已儲存 '+new Date().toLocaleTimeString();
-    },700);
+    if(settings.mode==='viewer'||editingJournal)return;
+    localStorage.setItem(jDraftKey(currentDate),$('#journal').value); // 還沒送出也不會不見
   });
+  $('#jSend').onclick=sendJournal;
+  $('#jCancel').onclick=cancelEditJournal;
   $('#photoInput').addEventListener('change',e=>{
     if(e.target.files.length)addPhotos([...e.target.files],e.target._date||currentDate,e.target._momentId||null);
     e.target._momentId=null; e.target.value='';
