@@ -219,12 +219,14 @@ body.vmode .tlacts,
 body.vmode .addph,
 body.vmode #dayExpCard,
 body.vmode #todoCard,
-body.vmode #journal,
 body.vmode #dayPhotoHint,
 body.vmode #viewerDel,
 body.vmode #viewerEditCap{display:none !important}
-#journalRead{display:none; font-size:15px; white-space:pre-wrap; line-height:1.6}
-body.vmode #journalRead{display:block}
+.jname{font-size:12px; color:var(--ink2); font-weight:600; margin-bottom:6px}
+.jentry{border-top:1px solid var(--line); padding-top:10px; margin-top:12px}
+.jentry .jh{font-size:12px; color:var(--ink2); display:flex; justify-content:space-between; gap:8px; margin-bottom:4px}
+.jentry .jb{font-size:15px; white-space:pre-wrap; line-height:1.6; word-break:break-word}
+body.vmode #jMine{display:none}
 .viewerbadge{display:none}
 body.vmode .viewerbadge{display:inline-block; font-size:11px; font-weight:400; background:rgba(255,255,255,.25); border-radius:8px; padding:2px 8px}
 /* 待辦 */
@@ -267,8 +269,11 @@ body.vmode .viewerbadge{display:inline-block; font-size:11px; font-weight:400; b
     <div style="height:14px"></div>
     <div class="card">
       <h2>📝 今日總結 <span class="mini" id="journalMeta"></span></h2>
-      <textarea id="journal" placeholder="睡前寫兩句今天的總結…（選填）"></textarea>
-      <div id="journalRead"></div>
+      <div id="jMine">
+        <div class="jname" id="jMyName"></div>
+        <textarea id="journal" placeholder="睡前寫兩句今天的總結…（選填）"></textarea>
+      </div>
+      <div id="jOthers"></div>
     </div>
     <div class="card">
       <h2>📷 更多照片 <span class="mini" id="dayPhotoCount"></span></h2>
@@ -506,12 +511,13 @@ const idbAll=s=>new Promise((res,rej)=>{const r=tx(s,'readonly').getAll();r.onsu
 /* ---------- 資料模型 ---------- */
 // day doc: {date, journal:{text,updatedAt,updatedBy}, moments:{id:{...}}, expenses:{id:{...}}, photos:{id:{...}}, dirty, sha}
 const docs=new Map();
-function blankDoc(date){return {date,journal:{text:'',updatedAt:0,updatedBy:''},moments:{},todos:{},expenses:{},photos:{},dirty:false,sha:null};}
+function blankDoc(date){return {date,journal:{text:'',updatedAt:0,updatedBy:''},journals:{},moments:{},todos:{},expenses:{},photos:{},dirty:false,sha:null};}
 async function getDoc(date){
   if(docs.has(date))return docs.get(date);
   const d=(await idbGet('days',date))||blankDoc(date);
   if(!d.moments)d.moments={}; // 舊資料相容
   if(!d.todos)d.todos={};
+  if(!d.journals)d.journals={}; // 每人一篇；舊的單篇 journal 仍保留不動
   docs.set(date,d); return d;
 }
 async function saveDoc(d,markDirty=true){
@@ -549,12 +555,28 @@ const cPayload=d=>JSON.stringify({date:d.date,comments:d.comments},null,1);
 function tripDates(){const a=[];for(let i=0;i<settings.days;i++)a.push(addDays(settings.startDate,i));return a;}
 function dayNo(date){return tripDates().indexOf(date)+1;}
 
+const jKey=n=>String(n||'').trim().toLowerCase()||'(未命名)';
+const meKey=()=>jKey(settings.name);
+// 收齊這一天所有人的總結；舊格式（單篇 journal）照樣讀得到，但永遠不覆寫它
+function jEntries(doc){
+  const out=[];
+  for(const k in (doc.journals||{})){
+    const e=doc.journals[k];
+    if(!e||e.deleted||!String(e.text||'').trim())continue;
+    out.push({key:k,name:e.name||k,text:e.text,updatedAt:e.updatedAt||0});
+  }
+  const lg=doc.journal;
+  if(lg&&String(lg.text||'').trim())
+    out.push({key:'__legacy',name:lg.updatedBy||'（舊紀錄）',text:lg.text,updatedAt:lg.updatedAt||0,legacy:true});
+  return out.sort((a,b)=>a.updatedAt-b.updatedAt);
+}
+
 /* ---------- 合併（兩人共用的核心） ---------- */
 function mergeDocs(local,remote){
   const out=blankDoc(local.date);
   out.journal=(remote.journal&&remote.journal.updatedAt>(local.journal?.updatedAt||0))?remote.journal:(local.journal||out.journal);
   for(const src of [remote,local]){ // local 後蓋，之後再比 updatedAt
-    for(const key of ['expenses','photos','moments','todos']){
+    for(const key of ['expenses','photos','moments','todos','journals']){
       for(const id in (src[key]||{})){
         const cur=out[key][id], cand=src[key][id];
         if(!cur||cand.updatedAt>cur.updatedAt)out[key][id]=cand;
@@ -563,7 +585,7 @@ function mergeDocs(local,remote){
   }
   return out;
 }
-const docPayload=d=>JSON.stringify({date:d.date,journal:d.journal,moments:d.moments||{},todos:d.todos||{},expenses:d.expenses,photos:d.photos},null,1);
+const docPayload=d=>JSON.stringify({date:d.date,journal:d.journal,journals:d.journals||{},moments:d.moments||{},todos:d.todos||{},expenses:d.expenses,photos:d.photos},null,1);
 
 /* ---------- GitHub 同步 ---------- */
 const GH={
@@ -871,10 +893,19 @@ async function renderDay(){
   renderWxBar();
   renderTrailMap(moments);
   // 今日總結
-  const j=$('#journal');
-  if(document.activeElement!==j)j.value=doc.journal.text||'';
-  $('#journalRead').textContent=(doc.journal.text||'').trim()||'（今天還沒寫總結）';
-  $('#journalMeta').textContent=doc.journal.updatedAt?`${doc.journal.updatedBy||''} ${new Date(doc.journal.updatedAt).toLocaleString()}`:'';
+  const j=$('#journal'), me=meKey(), all=jEntries(doc), viewer=settings.mode==='viewer';
+  const mine=all.find(e=>e.key===me);
+  // 舊格式那篇若是我寫的、而我還沒有新格式的一篇 → 直接接手編輯，不另外列一塊
+  const legacyMine=!mine?all.find(e=>e.legacy&&jKey(e.name)===me):null;
+  if(document.activeElement!==j)j.value=((mine||legacyMine||{}).text)||'';
+  $('#jMyName').textContent=(settings.name||'我')+'的總結';
+  const others=viewer?all:all.filter(e=>e!==mine&&e!==legacyMine);
+  $('#jOthers').innerHTML=others.length?others.map(e=>
+    `<div class="jentry"><div class="jh"><span>${escapeHtml(e.name)}</span>`+
+    `<span>${e.updatedAt?new Date(e.updatedAt).toLocaleString():''}</span></div>`+
+    `<div class="jb">${escapeHtml(e.text)}</div></div>`).join('')
+    :(viewer?'<div class="empty">今天還沒有人寫總結 🐾</div>':'');
+  $('#journalMeta').textContent=all.length?`${all.length} 篇`:'';
   // 未分站照片
   const grid=$('#dayPhotos'); grid.innerHTML='';
   const phs=Object.values(doc.photos).filter(p=>!p.deleted&&!p.momentId).sort((a,b)=>a.ts-b.ts);
@@ -1169,7 +1200,7 @@ async function renderOverview(){
     const p=Object.values(doc.photos).filter(x=>!x.deleted).length;
     const t=Object.values(doc.expenses).filter(x=>!x.deleted).reduce((s,e)=>s+toTWD(e),0);
     photos+=p; tot+=t;
-    if((doc.journal.text||'').trim()||Object.values(doc.moments||{}).some(m=>!m.deleted))daysWithJournal++;
+    if(jEntries(doc).length||Object.values(doc.moments||{}).some(m=>!m.deleted))daysWithJournal++;
     for(const e of Object.values(doc.expenses).filter(x=>!x.deleted)){
       const who=(e.payer||'').trim()||'（未填）';
       paidBy[who]=(paidBy[who]||0)+toTWD(e);
@@ -1501,7 +1532,7 @@ async function exportJSON(){
   const days=await idbAll('days');
   const data={app:'okitrip',exportedAt:new Date().toISOString(),
     settings:{...settings,token:undefined},
-    days:days.map(d=>({date:d.date,journal:d.journal,moments:d.moments||{},todos:d.todos||{},expenses:d.expenses,photos:d.photos}))};
+    days:days.map(d=>({date:d.date,journal:d.journal,journals:d.journals||{},moments:d.moments||{},todos:d.todos||{},expenses:d.expenses,photos:d.photos}))};
   const blob=new Blob([JSON.stringify(data,null,1)],{type:'application/json'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob); a.download='okinawa-backup-'+dstr(new Date())+'.json';
@@ -1530,7 +1561,9 @@ function bind(){
     clearTimeout(jTimer);
     jTimer=setTimeout(async()=>{
       const doc=await getDoc(currentDate);
-      doc.journal={text:$('#journal').value,updatedAt:now(),updatedBy:settings.name};
+      if(!doc.journals)doc.journals={};
+      const k=meKey();
+      doc.journals[k]={key:k,name:settings.name||'',text:$('#journal').value,updatedAt:now()};
       await saveDoc(doc);
       $('#journalMeta').textContent='已儲存 '+new Date().toLocaleTimeString();
     },700);
