@@ -658,7 +658,7 @@ function setSyncUI(state,msg){
   $('#syncDot').className=state;
   if(msg!==undefined)$('#syncStatus').textContent=msg;
 }
-const TRIP_KEYS=['tripName','startDate','days','rate','members'];
+const TRIP_KEYS=['tripName','startDate','days','rate','members','viewerToken','commentsRepo','commentsToken'];
 // 全隊共用的設定放在資料 repo，改一次所有人下次同步就跟上；各自的名字與 token 不在裡面
 async function pullTrip(){
   try{
@@ -676,11 +676,17 @@ async function pullTrip(){
 }
 async function pushTrip(){
   if(settings.mode==='viewer'||!settings.token||!settings.repo)return;
-  const body={}; TRIP_KEYS.forEach(k=>body[k]=settings[k]);
+  let remote={};
+  let rf=null;
+  try{rf=await GH.getFile('trip.json'); if(rf)remote=JSON.parse(rf.text);}catch(e){}
+  const body=Object.assign({},remote);
+  TRIP_KEYS.forEach(k=>{
+    const v=settings[k];
+    if(v!==undefined&&v!==null&&String(v)!=='')body[k]=v;   // 空值不覆蓋遠端既有的
+  });
   body.updatedAt=now(); body.updatedBy=settings.name||'';
   const text=JSON.stringify(body,null,1);
   try{
-    const rf=await GH.getFile('trip.json');
     if(rf&&rf.text===text){settings.tripSha=rf.sha;saveSettings();return;}
     settings.tripSha=await GH.putFile('trip.json',b64encodeText(text),rf?rf.sha:null,
       `update trip settings by ${settings.name||'user'}`);
@@ -1867,13 +1873,15 @@ function bind(){
     renderAll();
   };
   $('#shareFamily').onclick=()=>{
-    if(!settings.viewerToken||!settings.commentsToken){
-      $('#familyStatus').textContent='請先填「資料唯讀 Token」與「留言 Token」並按儲存';return;
+    if(!settings.viewerToken){
+      $('#familyStatus').textContent='請先填「資料唯讀 Token」並按儲存（留言 Token 可留空）';return;
     }
+    const withCmt=!!(settings.commentsToken&&settings.commentsRepo);
     shareLink({mode:'viewer',token:settings.viewerToken,repo:settings.repo,
-      commentsRepo:settings.commentsRepo,commentsToken:settings.commentsToken,
-      startDate:settings.startDate,days:settings.days},
-      '來看我們的沖繩旅行日記，也可以留言給我們 🌺');
+      commentsRepo:withCmt?settings.commentsRepo:'',commentsToken:withCmt?settings.commentsToken:'',
+      startDate:settings.startDate,days:settings.days,tripName:settings.tripName},
+      `來看我們的${settings.tripName||'旅行'}日記${withCmt?'，也可以留言給我們':''} 🌺`);
+    $('#familyStatus').textContent=withCmt?'已產生（可瀏覽＋留言）':'已產生（只能瀏覽，未開放留言）';
   };
   $('#todoAdd').onclick=addTodo;
   $('#todoInput').addEventListener('keydown',e=>{if(e.key==='Enter')addTodo();});
