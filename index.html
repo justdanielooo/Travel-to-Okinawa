@@ -266,7 +266,7 @@ body.vmode .viewerbadge{display:inline-block; font-size:11px; font-weight:400; b
 <main>
   <!-- 今日 -->
   <section class="tab show" id="tab-day">
-    <div id="wxBar" style="display:none; font-size:13px; color:var(--ink2); padding:2px 4px 12px"></div>
+    <div id="wxBar" style="display:none; font-size:13px; color:var(--ink2); padding:2px 4px 12px; line-height:1.6"></div>
     <div class="card" id="trailMapCard" style="display:none">
       <h2>🗺️ 今日軌跡</h2>
       <div id="trailMap"></div>
@@ -517,7 +517,8 @@ const catName=id=>(CATS.find(c=>c[0]===id)||CATS[5])[2];
 /* ---------- 設定 ---------- */
 const DEFAULTS={name:'',rate:0.205,token:'',repo:'justdanielooo/okinawa-data',startDate:'2026-07-16',days:20,
   mode:'owner',viewerToken:'',commentsRepo:'justdanielooo/okinawa-comments',commentsToken:'',members:'',
-  tripName:'宮古島之旅',tripSha:null};
+  tripName:'宮古島之旅',tripSha:null,
+  wxPlace:'宮古島',wxLat:24.805,wxLng:125.281};
 let settings={...DEFAULTS,...JSON.parse(localStorage.getItem('okitrip.settings')||'{}')};
 function saveSettings(){localStorage.setItem('okitrip.settings',JSON.stringify(settings));}
 
@@ -658,7 +659,7 @@ function setSyncUI(state,msg){
   $('#syncDot').className=state;
   if(msg!==undefined)$('#syncStatus').textContent=msg;
 }
-const TRIP_KEYS=['tripName','startDate','days','rate','members','viewerToken','commentsRepo','commentsToken'];
+const TRIP_KEYS=['tripName','startDate','days','rate','members','viewerToken','commentsRepo','commentsToken','wxPlace','wxLat','wxLng'];
 // 全隊共用的設定放在資料 repo，改一次所有人下次同步就跟上；各自的名字與 token 不在裡面
 async function pullTrip(){
   try{
@@ -826,7 +827,8 @@ async function refreshWeather(force){
   try{
     const start=new Date(settings.startDate+'T12:00:00');
     const pastDays=Math.min(92,Math.max(0,Math.floor((Date.now()-start)/86400000)+1));
-    const r=await fetch('https://api.open-meteo.com/v1/forecast?latitude=26.2124&longitude=127.6809'
+    const lat=settings.wxLat||DEFAULTS.wxLat, lng=settings.wxLng||DEFAULTS.wxLng;
+    const r=await fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lng
       +'&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=Asia%2FTokyo'
       +'&past_days='+pastDays+'&forecast_days=16');
     if(!r.ok)throw new Error('HTTP '+r.status);
@@ -837,6 +839,7 @@ async function refreshWeather(force){
     wxCache._fetchedAt=Date.now();
     localStorage.setItem('okitrip.wx',JSON.stringify(wxCache));
     if(currentTab==='day')renderWxBar();
+    refreshTide();   // 潮汐抓不到也不影響天氣
   }catch(e){console.warn('天氣抓取失敗',e);}
   finally{wxFetching=false;}
 }
@@ -844,10 +847,15 @@ function renderWxBar(){
   const el=$('#wxBar'), w=wxCache[currentDate];
   if(!w){el.style.display='none';return;}
   const [ic,nm]=wxIcon(w.c);
-  let html=`${ic} 那霸 ${nm} ${w.hi}°／${w.lo}°`;
+  let html=`${ic} ${escapeHtml(settings.wxPlace||DEFAULTS.wxPlace)} ${nm} ${w.hi}°／${w.lo}°`;
   if(currentDate===dstr(new Date())){
     const tm=wxCache[addDays(currentDate,1)];
     if(tm){const [i2,n2]=wxIcon(tm.c);html+=`　<span style="opacity:.75">明天 ${i2} ${n2} ${tm.hi}°</span>`;}
+  }
+  const td=tideCache[currentDate];
+  if(td&&td.length){
+    const parts=td.map(x=>`${x.k==='high'?'滿潮':'乾潮'} ${x.t}`).join('　');
+    html+=`<div style="margin-top:3px; opacity:.85">🌊 ${parts}<span style="opacity:.7"> · 約略</span></div>`;
   }
   el.innerHTML=html; el.style.display='';
 }
@@ -1061,6 +1069,42 @@ function momentCard(m,doc,phs){
   on('[data-act="move"]',()=>skipPlan(m,'moved'));
   if(isPlan(m))el.onclick=e=>{if(!e.target.closest('button,a'))openMomentSheet(m);};
   return el;
+}
+// 潮汐：Open-Meteo 的海面高度是逐小時的，極值要自己找，再用拋物線內插把時間修到分鐘
+let tideCache=JSON.parse(localStorage.getItem('okitrip.tide')||'{}'), tideFetching=false;
+async function refreshTide(){
+  if(tideFetching||!navigator.onLine)return;
+  if(tideCache._fetchedAt&&Date.now()-tideCache._fetchedAt<6*3600e3)return;
+  tideFetching=true;
+  try{
+    const lat=settings.wxLat||DEFAULTS.wxLat, lng=settings.wxLng||DEFAULTS.wxLng;
+    const r=await fetch('https://marine-api.open-meteo.com/v1/marine?latitude='+lat+'&longitude='+lng
+      +'&hourly=sea_level_height_msl&timezone=Asia%2FTokyo&forecast_days=10');
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const j=await r.json();
+    const t=j&&j.hourly&&j.hourly.time, h=j&&j.hourly&&j.hourly.sea_level_height_msl;
+    if(!t||!h||!t.length)throw new Error('沒有 sea_level_height_msl 欄位');
+    const out={};
+    for(let i=1;i<t.length-1;i++){
+      const a=h[i-1],b=h[i],c=h[i+1];
+      if(a==null||b==null||c==null)continue;
+      const isHigh=b>a&&b>=c, isLow=b<a&&b<=c;
+      if(!isHigh&&!isLow)continue;
+      const den=(a-2*b+c);
+      const off=den?Math.max(-1,Math.min(1,0.5*(a-c)/den)):0;   // 極值落在整點之間的位置
+      const base=new Date(t[i].replace(' ','T'));
+      const when=new Date(base.getTime()+off*3600e3);
+      const date=when.getFullYear()+'-'+String(when.getMonth()+1).padStart(2,'0')+'-'+String(when.getDate()).padStart(2,'0');
+      const hm=String(when.getHours()).padStart(2,'0')+':'+String(when.getMinutes()).padStart(2,'0');
+      (out[date]=out[date]||[]).push({k:isHigh?'high':'low',t:hm,m:Math.round(b*100)/100});
+    }
+    for(const d in out)out[d].sort((x,y)=>x.t.localeCompare(y.t));
+    Object.assign(tideCache,out);
+    tideCache._fetchedAt=Date.now();
+    localStorage.setItem('okitrip.tide',JSON.stringify(tideCache));
+    if(currentTab==='day')renderWxBar();
+  }catch(e){console.warn('潮汐抓取失敗',e);}
+  finally{tideFetching=false;}
 }
 let trailMap=null, trailLayer=null;
 function renderTrailMap(moments){
