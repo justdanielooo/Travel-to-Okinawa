@@ -854,7 +854,7 @@ function renderWxBar(){
   }
   const td=tideCache[currentDate];
   if(td&&td.length){
-    const parts=td.map(x=>`${x.k==='high'?'滿潮':'乾潮'} ${x.t}`).join('　');
+    const parts=td.map(x=>`${x.k==='high'?'滿潮':'乾潮'} ${x.t}<span style="opacity:.65"> ${x.m.toFixed(1)}m</span>`).join('　');
     html+=`<div style="margin-top:3px; opacity:.85">🌊 ${parts}<span style="opacity:.7"> · 約略</span></div>`;
   }
   el.innerHTML=html; el.style.display='';
@@ -1072,6 +1072,29 @@ function momentCard(m,doc,phs){
 }
 // 潮汐：Open-Meteo 的海面高度是逐小時的，極值要自己找，再用拋物線內插把時間修到分鐘
 let tideCache=JSON.parse(localStorage.getItem('okitrip.tide')||'{}'), tideFetching=false;
+// 整串一起過濾（潮汐不理會午夜），每次先拿掉起伏最小的那個，再把因此相鄰的同類合併
+function pruneTide(list){
+  if(list.length<3)return list;
+  const hs=list.map(x=>x.m), range=Math.max(...hs)-Math.min(...hs);
+  const minRise=Math.max(0.10,range*0.08);   // 只濾掉幾乎平的雜訊；高度會一起顯示，讓人自己判斷
+  let cur=list.slice();
+  for(;;){
+    let worst=-1, worstRise=Infinity;
+    for(let i=1;i<cur.length-1;i++){
+      const rise=Math.min(Math.abs(cur[i].m-cur[i-1].m),Math.abs(cur[i].m-cur[i+1].m));
+      if(rise<worstRise){worstRise=rise; worst=i;}
+    }
+    if(worst<0||worstRise>=minRise)break;
+    cur.splice(worst,1);
+    for(let i=0;i<cur.length-1;i++){   // 刪掉之後可能出現連續同類，留比較極端的
+      if(cur[i].k===cur[i+1].k){
+        const keep=cur[i].k==='high'?(cur[i].m>=cur[i+1].m?i:i+1):(cur[i].m<=cur[i+1].m?i:i+1);
+        cur.splice(keep===i?i+1:i,1); break;
+      }
+    }
+  }
+  return cur;
+}
 async function refreshTide(){
   if(tideFetching||!navigator.onLine)return;
   if(tideCache._fetchedAt&&Date.now()-tideCache._fetchedAt<6*3600e3)return;
@@ -1079,12 +1102,12 @@ async function refreshTide(){
   try{
     const lat=settings.wxLat||DEFAULTS.wxLat, lng=settings.wxLng||DEFAULTS.wxLng;
     const r=await fetch('https://marine-api.open-meteo.com/v1/marine?latitude='+lat+'&longitude='+lng
-      +'&hourly=sea_level_height_msl&timezone=Asia%2FTokyo&forecast_days=10');
+      +'&hourly=sea_level_height_msl&timezone=Asia%2FTokyo&forecast_days=7');   // 海洋 API 的上限比天氣低，要太多天會整包失敗
     if(!r.ok)throw new Error('HTTP '+r.status);
     const j=await r.json();
     const t=j&&j.hourly&&j.hourly.time, h=j&&j.hourly&&j.hourly.sea_level_height_msl;
     if(!t||!h||!t.length)throw new Error('沒有 sea_level_height_msl 欄位');
-    const out={};
+    const out={}, all=[];
     for(let i=1;i<t.length-1;i++){
       const a=h[i-1],b=h[i],c=h[i+1];
       if(a==null||b==null||c==null)continue;
@@ -1096,9 +1119,9 @@ async function refreshTide(){
       const when=new Date(base.getTime()+off*3600e3);
       const date=when.getFullYear()+'-'+String(when.getMonth()+1).padStart(2,'0')+'-'+String(when.getDate()).padStart(2,'0');
       const hm=String(when.getHours()).padStart(2,'0')+':'+String(when.getMinutes()).padStart(2,'0');
-      (out[date]=out[date]||[]).push({k:isHigh?'high':'low',t:hm,m:Math.round(b*100)/100});
+      all.push({k:isHigh?'high':'low',t:hm,m:Math.round(b*100)/100,d:date});
     }
-    for(const d in out)out[d].sort((x,y)=>x.t.localeCompare(y.t));
+    for(const e of pruneTide(all))(out[e.d]=out[e.d]||[]).push({k:e.k,t:e.t,m:e.m});
     Object.assign(tideCache,out);
     tideCache._fetchedAt=Date.now();
     localStorage.setItem('okitrip.tide',JSON.stringify(tideCache));
