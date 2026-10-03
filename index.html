@@ -839,7 +839,6 @@ async function refreshWeather(force){
     wxCache._fetchedAt=Date.now();
     localStorage.setItem('okitrip.wx',JSON.stringify(wxCache));
     if(currentTab==='day')renderWxBar();
-    refreshTide();   // 潮汐抓不到也不影響天氣
   }catch(e){console.warn('天氣抓取失敗',e);}
   finally{wxFetching=false;}
 }
@@ -1095,9 +1094,9 @@ function pruneTide(list){
   }
   return cur;
 }
-async function refreshTide(){
+async function refreshTide(force){
   if(tideFetching||!navigator.onLine)return;
-  if(tideCache._fetchedAt&&Date.now()-tideCache._fetchedAt<6*3600e3)return;
+  if(!force&&tideCache._fetchedAt&&Date.now()-tideCache._fetchedAt<6*3600e3)return;
   tideFetching=true;
   try{
     const lat=settings.wxLat||DEFAULTS.wxLat, lng=settings.wxLng||DEFAULTS.wxLng;
@@ -1914,7 +1913,7 @@ function bind(){
       syncAll(false);
     }catch(e){setSyncUI('err','連線失敗：'+e.message+'（請確認 token 與 repo 名稱）');}
   };
-  $('#syncNow').onclick=()=>syncAll(false);
+  $('#syncNow').onclick=()=>{syncAll(false);refreshWeather(true);refreshTide(true);};  // 按下去就是什麼都更新
   async function shareLink(cfg,shareText){
     const link=location.origin+location.pathname+'#setup='+b64encodeText(JSON.stringify(cfg));
     if(navigator.share){
@@ -1967,12 +1966,13 @@ function bind(){
   $('#exportBtn').onclick=exportJSON;
   $('#importBtn').onclick=()=>$('#importFile').click();
   $('#importFile').addEventListener('change',e=>{if(e.target.files[0])importJSON(e.target.files[0]);e.target.value='';});
-  window.addEventListener('online',()=>syncAll(true));
+  window.addEventListener('online',()=>{syncAll(true);refreshWeather();refreshTide();});
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncAll(true);});
   // 頁面開著的時候也定時拉最新資料（另一半剛記的東西 1 分鐘內就會出現）；順便刷新天氣（3 小時內不重抓）
   setInterval(()=>{
     if(document.hidden||!navigator.onLine)return;
     refreshWeather();
+    refreshTide();        // 各有各的快取時間，分開跑
     if(settings.token)syncAll(true);
   },60000);
 }
@@ -2019,6 +2019,7 @@ window.addEventListener('hashchange',()=>{if(location.hash.startsWith('#setup=')
   renderTripTitle();
   renderAll();
   refreshWeather();
+  refreshTide();
   // 名字沒填就一直問：空名字會讓日記歸屬與分帳同時失準
   if(!settings.name&&settings.mode!=='viewer'&&!location.hash.startsWith('#setup='))setTimeout(async()=>{
     if(settings.token&&settings.repo&&!memberList().length){
